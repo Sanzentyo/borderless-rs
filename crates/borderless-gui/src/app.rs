@@ -281,9 +281,9 @@ fn window_card(
             ))
             .spacing(ACTION_SPACING),
         ))
-        .spacing(10.0)
-        .padding(CARD_PADDING),
+        .spacing(10.0),
         selected,
+        CARD_PADDING,
     )
     .width(LIST_PANE_WIDTH)
     .on_tapped({
@@ -357,9 +357,9 @@ fn detail_panel(
                     ))
                     .spacing(ACTION_SPACING),
                 ))
-                .spacing(10.0)
-                .padding(PANEL_PADDING),
+                .spacing(10.0),
                 false,
+                PANEL_PADDING,
             )
         }
         None => empty_state(text.empty_selection_title, text.empty_selection_message),
@@ -422,9 +422,9 @@ fn aspect_controls(model: &GuiModel, set_model: &AsyncSetState<GuiModel>, text: 
                     move |index| set_model.call(model.clone().with_target_display_index(index))
                 }),
         ))
-        .spacing(16.0)
-        .padding(PANEL_PADDING),
+        .spacing(16.0),
         false,
+        PANEL_PADDING,
     )
 }
 
@@ -504,10 +504,9 @@ fn favorites_page(
     );
 
     surface(
-        vstack(children)
-            .spacing(SECTION_SPACING)
-            .padding(PANEL_PADDING),
+        vstack(children).spacing(SECTION_SPACING),
         false,
+        PANEL_PADDING,
     )
     .margin(PAGE_PADDING)
 }
@@ -591,9 +590,9 @@ fn settings_page(
                         }
                     }),
             ))
-            .spacing(SECTION_SPACING)
-            .padding(PANEL_PADDING),
+            .spacing(SECTION_SPACING),
             false,
+            PANEL_PADDING,
         ),
     ))
     .spacing(SECTION_SPACING)
@@ -690,14 +689,13 @@ fn status_bar(model: &GuiModel, set_model: &AsyncSetState<GuiModel>) -> Element 
 
 fn empty_state(title_text: impl Into<String>, message: impl Into<String>) -> Element {
     surface(
-        vstack((subtitle(title_text), body(message).wrap()))
-            .spacing(10.0)
-            .padding(PANEL_PADDING),
+        vstack((subtitle(title_text), body(message).wrap())).spacing(10.0),
         false,
+        PANEL_PADDING,
     )
 }
 
-fn surface(content: impl Into<Element>, selected: bool) -> Element {
+fn surface(content: impl Into<Element>, selected: bool, padding: f64) -> Element {
     let stroke = if selected {
         ThemeRef::Accent
     } else {
@@ -708,6 +706,7 @@ fn surface(content: impl Into<Element>, selected: bool) -> Element {
         .corner_radius(SURFACE_RADIUS)
         .border_brush(stroke)
         .border_thickness(Thickness::uniform(1.0))
+        .padding(padding)
         .background(ThemeRef::CardBackground)
         .into()
 }

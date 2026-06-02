@@ -1,0 +1,21 @@
+# Third Party Notices
+
+This project is licensed under `MIT OR Apache-2.0`.
+
+The Rust dependencies are listed in `Cargo.lock`; their license metadata is available through:
+
+```powershell
+cargo metadata --format-version 1
+```
+
+Most Rust dependencies used by this project are permissively licensed under MIT, Apache-2.0, or
+MIT/Apache-2.0-compatible terms. Notable dependency families include:
+
+- `windows`, `windows-*`, and `windows-reactor`: MIT OR Apache-2.0, sourced from `microsoft/windows-rs`.
+- `tokio`, `ractor`, `tracing`, `serde`, `clap`, `regex`, and related transitive crates: permissive Rust ecosystem licenses.
+- `directories` may pull `option-ext`, which is MPL-2.0.
+
+Self-contained GUI builds may include Windows App SDK / Windows App Runtime redistributable files.
+Those files are distributed under Microsoft's applicable redistributable terms, not this project's
+source license. Review the Windows App SDK deployment and redistributable terms before publishing a
+binary installer or archive.

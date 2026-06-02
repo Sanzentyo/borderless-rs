@@ -72,6 +72,11 @@ impl MonitorSnapshot {
     pub fn contains_window_origin(self, window: &WindowSnapshot) -> bool {
         self.rect.contains_point(window.rect.left, window.rect.top)
     }
+
+    #[must_use]
+    pub fn window_intersection_area(self, window: &WindowSnapshot) -> i64 {
+        self.rect.intersection_area(window.rect)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

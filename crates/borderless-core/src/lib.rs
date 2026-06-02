@@ -5,6 +5,7 @@ pub mod backend;
 pub mod config;
 pub mod error;
 pub mod favorite;
+pub mod profile;
 pub mod reducer;
 pub mod session;
 pub mod types;

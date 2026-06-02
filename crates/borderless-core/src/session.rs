@@ -153,7 +153,10 @@ fn resolve_target_frame(
         TargetFrame::CurrentMonitor => monitors
             .iter()
             .copied()
-            .find(|monitor| monitor.contains_window_origin(window)),
+            .map(|monitor| (monitor, monitor.window_intersection_area(window)))
+            .max_by_key(|(_, area)| *area)
+            .filter(|(_, area)| *area > 0)
+            .map(|(monitor, _)| monitor),
         TargetFrame::PrimaryMonitor => monitors.iter().copied().find(|monitor| monitor.primary),
         TargetFrame::Monitor(id) => monitors.iter().copied().find(|monitor| monitor.id == id),
         TargetFrame::Exact(rect) => return Ok(rect),
@@ -186,5 +189,31 @@ mod tests {
         let fitted = aspect_fit_rect(monitor, 16, 9).expect("valid aspect fit");
 
         assert_eq!(fitted, Rect::new(0, 462, 1200, 1137).unwrap());
+    }
+
+    #[test]
+    fn current_monitor_uses_largest_overlap_not_only_window_origin() {
+        let monitor = MonitorSnapshot {
+            id: crate::types::MonitorId(1),
+            rect: Rect::new(-3840, 0, -1280, 1440).unwrap(),
+            work_area: Rect::new(-3840, 0, -1280, 1400).unwrap(),
+            primary: false,
+        };
+        let window = WindowSnapshot {
+            hwnd: crate::types::Hwnd(42),
+            pid: crate::types::Pid::new(1).unwrap(),
+            process_name: crate::types::ProcessName::new("terminal.exe").unwrap(),
+            title: crate::types::WindowTitle::new("terminal"),
+            class_name: "Window".to_owned(),
+            rect: Rect::new(-3847, -6, -1272, 1401).unwrap(),
+            style: crate::window::StyleBits::VISIBLE,
+            ex_style: crate::window::ExStyleBits::default(),
+            is_visible: true,
+        };
+
+        let resolved =
+            resolve_target_frame(&window, &[monitor], TargetFrame::CurrentMonitor).unwrap();
+
+        assert_eq!(resolved, monitor.rect);
     }
 }

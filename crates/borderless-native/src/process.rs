@@ -5,13 +5,7 @@ use windows::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS,
 };
 
-pub(crate) fn process_name(pid: Pid) -> Option<ProcessName> {
-    process_names()
-        .into_iter()
-        .find_map(|(candidate_pid, name)| (candidate_pid == pid).then_some(name))
-}
-
-fn process_names() -> Vec<(Pid, ProcessName)> {
+pub(crate) fn process_names() -> Vec<(Pid, ProcessName)> {
     let Ok(snapshot) = (unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) }) else {
         return Vec::new();
     };

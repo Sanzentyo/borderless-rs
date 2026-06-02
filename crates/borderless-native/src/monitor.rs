@@ -1,4 +1,5 @@
 use crate::ffi;
+use borderless_core::profile::ProfileSpan;
 use borderless_core::{CoreResult, MonitorId, MonitorSnapshot};
 use std::cell::RefCell;
 use windows::Win32::Foundation::{LPARAM, RECT};
@@ -8,6 +9,7 @@ use windows::Win32::Graphics::Gdi::{
 use windows::core::BOOL;
 
 pub(crate) fn monitors() -> CoreResult<Vec<MonitorSnapshot>> {
+    let _span = ProfileSpan::start("native.monitors");
     thread_local! {
         static MONITORS: RefCell<Vec<MonitorSnapshot>> = const { RefCell::new(Vec::new()) };
     }
@@ -50,7 +52,9 @@ pub(crate) fn monitors() -> CoreResult<Vec<MonitorSnapshot>> {
         ))
         .map_err(|_| borderless_core::CoreError::Transition("EnumDisplayMonitors failed"))?;
     }
-    Ok(MONITORS.with(|cell| cell.borrow().clone()))
+    let monitors = MONITORS.with(|cell| cell.borrow().clone());
+    ProfileSpan::mark(format!("native.monitors: count={}", monitors.len()));
+    Ok(monitors)
 }
 
 #[allow(dead_code)]

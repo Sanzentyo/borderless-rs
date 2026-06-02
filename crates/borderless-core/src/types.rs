@@ -107,6 +107,19 @@ impl Rect {
     }
 
     #[must_use]
+    pub fn intersection_area(self, other: Self) -> i64 {
+        let left = self.left.max(other.left).0;
+        let top = self.top.max(other.top).0;
+        let right = self.right.min(other.right).0;
+        let bottom = self.bottom.min(other.bottom).0;
+        if right <= left || bottom <= top {
+            0
+        } else {
+            i64::from(right - left) * i64::from(bottom - top)
+        }
+    }
+
+    #[must_use]
     pub fn with_offsets(self, offsets: crate::action::EdgeOffsets) -> Self {
         Self {
             left: self.left + offsets.left,

@@ -162,6 +162,7 @@ pub struct GuiModel {
     custom_aspect_width: u32,
     custom_aspect_height: u32,
     target_display_index: i32,
+    nav_pane: NavPaneState,
     reset_environment_on_exit: bool,
     status: StatusLine,
     busy: bool,
@@ -181,6 +182,7 @@ impl Default for GuiModel {
             custom_aspect_width: 4,
             custom_aspect_height: 3,
             target_display_index: 0,
+            nav_pane: NavPaneState::Open,
             reset_environment_on_exit: true,
             status: StatusLine::default(),
             busy: false,
@@ -245,6 +247,16 @@ impl GuiModel {
     #[must_use]
     pub const fn target_display_index(&self) -> i32 {
         self.target_display_index
+    }
+
+    #[must_use]
+    pub const fn nav_pane_open(&self) -> bool {
+        self.nav_pane.is_open()
+    }
+
+    #[must_use]
+    pub const fn nav_pane(&self) -> NavPaneState {
+        self.nav_pane
     }
 
     #[must_use]
@@ -347,6 +359,12 @@ impl GuiModel {
     }
 
     #[must_use]
+    pub const fn with_nav_pane(mut self, nav_pane: NavPaneState) -> Self {
+        self.nav_pane = nav_pane;
+        self
+    }
+
+    #[must_use]
     pub const fn with_reset_environment_on_exit(mut self, reset: bool) -> Self {
         self.reset_environment_on_exit = reset;
         self
@@ -395,6 +413,28 @@ impl GuiModel {
                     TargetFrame::Monitor(monitor.id)
                 }),
             _ => TargetFrame::CurrentMonitor,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum NavPaneState {
+    #[default]
+    Open,
+    Compact,
+}
+
+impl NavPaneState {
+    #[must_use]
+    pub const fn is_open(self) -> bool {
+        matches!(self, Self::Open)
+    }
+
+    #[must_use]
+    pub const fn toggled(self) -> Self {
+        match self {
+            Self::Open => Self::Compact,
+            Self::Compact => Self::Open,
         }
     }
 }

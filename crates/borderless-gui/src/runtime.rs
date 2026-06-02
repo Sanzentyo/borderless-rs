@@ -1,5 +1,6 @@
 use crate::model::{GuiModel, StatusLine, favorite_from_window};
 use anyhow::Result;
+use borderless_core::profile::ProfileSpan;
 use borderless_core::{FavoriteOptions, Hwnd, WindowSnapshot};
 use borderless_native::NativeBackend;
 use borderless_runtime::{ControllerMsg, spawn_runtime};
@@ -18,8 +19,11 @@ pub struct GuiRuntime {
 
 impl GuiRuntime {
     pub fn boot() -> Result<Self> {
+        let _span = ProfileSpan::start("gui.runtime.boot");
         let inner = Arc::new(Runtime::new()?);
+        ProfileSpan::mark("gui.runtime.boot: tokio runtime created");
         let handle = inner.block_on(spawn_runtime(NativeBackend::new()))?;
+        ProfileSpan::mark("gui.runtime.boot: actors spawned");
         Ok(Self {
             inner,
             controller: handle.controller,
@@ -33,12 +37,14 @@ impl GuiRuntime {
     }
 
     pub fn initial_model(&self) -> GuiModel {
+        let _span = ProfileSpan::start("gui.runtime.initial_model");
         let controller = self.controller.clone();
         let (windows, monitors) = self.inner.block_on(async move {
-            (
-                ractor::call!(controller, ControllerMsg::ListWindows),
-                ractor::call!(controller, ControllerMsg::ListMonitors),
-            )
+            let windows = ractor::call!(controller.clone(), ControllerMsg::ListWindows);
+            ProfileSpan::mark("gui.runtime.initial_model: ListWindows returned");
+            let monitors = ractor::call!(controller, ControllerMsg::ListMonitors);
+            ProfileSpan::mark("gui.runtime.initial_model: ListMonitors returned");
+            (windows, monitors)
         });
 
         let model = match monitors {

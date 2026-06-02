@@ -61,6 +61,11 @@ cargo run -p borderless-cli --target x86_64-pc-windows-msvc -- watch
 
 # Launch GUI
 cargo run -p borderless-gui --target x86_64-pc-windows-msvc
+
+# Launch GUI with startup profiling
+$env:BORDERLESS_PROFILE = "1"
+cargo run -p borderless-gui --target x86_64-pc-windows-msvc
+Get-Content "$env:TEMP\borderless-oxide-profile.log" -Tail 80
 ```
 
 ## GUI
@@ -74,3 +79,12 @@ Win32 manipulation requires `unsafe`. Unsafe calls are isolated in `borderless-n
 ## Verification status
 
 Development and verification target Windows/MSVC. Use `cargo check-win`, `cargo clippy-win`, and `cargo fmt-all` for the regular local pass.
+
+## License
+
+This project is licensed under either of:
+
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
+- MIT license ([LICENSE-MIT](LICENSE-MIT))
+
+Third-party dependency and redistributable notes live in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

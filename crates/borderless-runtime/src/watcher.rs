@@ -2,7 +2,7 @@ use crate::messages::{ControllerMsg, WatcherMsg};
 use borderless_core::{AppConfig, SettingsStore, WindowCatalog};
 use ractor::{Actor, ActorProcessingErr, ActorRef, call};
 use std::sync::Arc;
-use tokio::time::{MissedTickBehavior, interval};
+use tokio::time::{Instant, MissedTickBehavior, interval_at};
 
 pub struct WatcherActor<B> {
     backend: Arc<B>,
@@ -39,7 +39,8 @@ where
         (): (),
     ) -> Result<Self::State, ActorProcessingErr> {
         let config = self.backend.load_config().unwrap_or_default();
-        let mut ticker = interval(config.effective_poll_interval());
+        let poll_interval = config.effective_poll_interval();
+        let mut ticker = interval_at(Instant::now() + poll_interval, poll_interval);
         ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
         tokio::spawn(async move {
             loop {

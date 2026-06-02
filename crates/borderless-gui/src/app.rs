@@ -2,6 +2,7 @@ use crate::locale::{Locale, Text};
 use crate::model::{AspectPreset, GuiModel, Page, SearchQuery, StatusKind, StatusLine};
 use crate::runtime::GuiRuntime;
 use anyhow::Result;
+use borderless_core::profile::ProfileSpan;
 use borderless_core::{Hwnd, WindowSnapshot};
 use windows_reactor::{
     App, AsyncSetState, Backdrop, Brush, Color, ComboBox, CommandBarLabelPos, Element, ElementExt,
@@ -13,10 +14,15 @@ use windows_reactor::{
 };
 
 pub fn run() -> Result<()> {
+    let _span = ProfileSpan::start("gui.run");
     tracing_subscriber::fmt().with_env_filter("info").init();
+    ProfileSpan::mark("gui.run: tracing initialized");
     let runtime = GuiRuntime::boot()?;
+    ProfileSpan::mark("gui.run: runtime booted");
     let initial_model = runtime.initial_model();
+    ProfileSpan::mark("gui.run: initial model loaded");
     let text = Locale::detect().tr();
+    ProfileSpan::mark("gui.run: locale detected");
     App::new()
         .title("Borderless Oxide")
         .inner_size(1120.0, 720.0)
@@ -28,6 +34,7 @@ pub fn run() -> Result<()> {
         })
         .backdrop(Backdrop::Mica)
         .render(move |cx| render_root(cx, &runtime, initial_model.clone(), text))?;
+    ProfileSpan::mark("gui.run: render returned");
     Ok(())
 }
 
@@ -50,6 +57,7 @@ fn render_root(
         .pane_title(text.app_title)
         .header(text.page(model.page()))
         .selected_tag(model.page().tag())
+        .pane_open(model.nav_pane_open())
         .pane_display_mode(NavViewPaneDisplayMode::Left)
         .settings_visible(false)
         .auto_suggest_placeholder(text.search_windows)
@@ -59,6 +67,8 @@ fn render_root(
             move |query| set_model.call(model.clone().with_query(SearchQuery::new(query)))
         })
         .on_selection_changed({
+            let set_model = set_model.clone();
+            let model = model.clone();
             move |tag: String| {
                 if let Some(page) = Page::from_tag(&tag) {
                     set_model.call(model.clone().with_page(page));
@@ -68,14 +78,28 @@ fn render_root(
         .pane_toggle_button_visible(false)
         .back_button_visible(false);
 
-    grid((app_title_bar(text).grid_row(0), nav_view.grid_row(1)))
-        .rows([GridLength::Auto, GridLength::Star(1.0)])
-        .columns([GridLength::Star(1.0)])
-        .into()
+    grid((
+        app_title_bar(text, &model, &set_model).grid_row(0),
+        nav_view.grid_row(1),
+    ))
+    .rows([GridLength::Auto, GridLength::Star(1.0)])
+    .columns([GridLength::Star(1.0)])
+    .into()
 }
 
-fn app_title_bar(text: Text) -> Element {
-    TitleBar::new(text.app_title).tall(false).into()
+fn app_title_bar(text: Text, model: &GuiModel, set_model: &AsyncSetState<GuiModel>) -> Element {
+    TitleBar::new(text.app_title)
+        .pane_toggle_button_visible(true)
+        .on_pane_toggle_requested({
+            let set_model = set_model.clone();
+            let model = model.clone();
+            move || {
+                let next = model.nav_pane().toggled();
+                set_model.call(model.clone().with_nav_pane(next));
+            }
+        })
+        .tall(false)
+        .into()
 }
 
 fn nav_items(text: Text) -> Vec<NavViewItem> {
@@ -111,7 +135,7 @@ fn windows_page(
             .into()
     };
 
-    vstack((
+    grid((
         command_bar(vec![
             app_bar_button_icon(text.refresh, SymbolGlyph::Sync),
             app_bar_button_icon(text.apply_selected, SymbolGlyph::Play),
@@ -128,21 +152,29 @@ fn windows_page(
             move |command: String| {
                 handle_windows_command(&runtime, &set_model, model.clone(), &command, text);
             }
-        }),
-        status_bar(model, set_model),
-        aspect_controls(model, set_model, text),
+        })
+        .grid_row(0),
+        status_bar(model, set_model).grid_row(1),
+        aspect_controls(model, set_model, text).grid_row(2),
         grid((
             scroll_viewer(list)
                 .grid_column(0)
                 .vertical_alignment(VerticalAlignment::Stretch),
             detail_panel(runtime, model, set_model, selected, text).grid_column(1),
         ))
+        .grid_row(3)
         .columns([GridLength::Star(3.0), GridLength::Star(2.0)])
         .column_spacing(16.0)
         .vertical_alignment(VerticalAlignment::Stretch),
     ))
-    .spacing(12.0)
-    .padding(24.0)
+    .rows([
+        GridLength::Auto,
+        GridLength::Auto,
+        GridLength::Auto,
+        GridLength::Star(1.0),
+    ])
+    .row_spacing(12.0)
+    .padding(20.0)
     .into()
 }
 
@@ -246,10 +278,10 @@ fn window_card(
             ))
             .spacing(8.0),
         ))
-        .spacing(8.0)
-        .padding(14.0),
+        .spacing(6.0)
+        .padding(10.0),
     )
-    .corner_radius(8.0)
+    .corner_radius(6.0)
     .border_brush(Brush::from(border_color))
     .border_thickness(Thickness::uniform(if selected { 2.0 } else { 1.0 }))
     .into()
@@ -308,9 +340,9 @@ fn detail_panel(
                 .spacing(8.0),
             ))
             .spacing(8.0)
-            .padding(16.0),
+            .padding(12.0),
         )
-        .corner_radius(8.0)
+        .corner_radius(6.0)
         .border_brush(Brush::from(Color::rgb(120, 120, 120)))
         .border_thickness(Thickness::uniform(1.0))
         .into(),
@@ -375,9 +407,9 @@ fn aspect_controls(model: &GuiModel, set_model: &AsyncSetState<GuiModel>, text: 
                 }),
         ))
         .spacing(12.0)
-        .padding(12.0),
+        .padding(10.0),
     )
-    .corner_radius(8.0)
+    .corner_radius(6.0)
     .border_brush(Brush::from(Color::rgb(90, 90, 90)))
     .border_thickness(Thickness::uniform(1.0))
     .into()
@@ -566,11 +598,12 @@ fn logs_page(model: &GuiModel, text: Text) -> Element {
         .map(|line| caption(line).wrap().into())
         .collect::<Vec<Element>>();
 
-    vstack((
-        body(text.logs_intro).wrap(),
-        scroll_viewer(vstack(rows).spacing(4.0)),
+    grid((
+        body(text.logs_intro).wrap().grid_row(0),
+        scroll_viewer(vstack(rows).spacing(4.0)).grid_row(1),
     ))
-    .spacing(12.0)
+    .rows([GridLength::Auto, GridLength::Star(1.0)])
+    .row_spacing(12.0)
     .padding(24.0)
     .into()
 }

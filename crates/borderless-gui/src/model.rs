@@ -182,7 +182,7 @@ impl Default for GuiModel {
             custom_aspect_width: 4,
             custom_aspect_height: 3,
             target_display_index: 0,
-            nav_pane: NavPaneState::Open,
+            nav_pane: NavPaneState::Compact,
             reset_environment_on_exit: true,
             status: StatusLine::default(),
             busy: false,

@@ -5,13 +5,15 @@ use anyhow::Result;
 use borderless_core::profile::ProfileSpan;
 use borderless_core::{Hwnd, WindowSnapshot};
 use windows_reactor::{
-    App, AsyncSetState, Backdrop, Brush, Color, ComboBox, CommandBarLabelPos, Element, ElementExt,
-    GridLength, InfoBar, InfoBarSeverity, InnerConstraints, NavViewItem, NavViewPaneDisplayMode,
-    NavigationView, NumberBox, RenderCx, RequestedTheme, SymbolGlyph, Thickness, TitleBar,
-    ToggleSwitch, VerticalAlignment, app_bar_button_icon, app_bar_separator, body, body_strong,
-    border, button, caption, command_bar, grid, hstack, scroll_viewer, set_requested_theme,
-    subtitle, vstack,
+    App, AsyncSetState, Backdrop, ComboBox, CommandBarLabelPos, Element, ElementExt, GridLength,
+    InfoBar, InfoBarSeverity, InnerConstraints, NavViewItem, NavViewPaneDisplayMode,
+    NavigationView, NumberBox, RenderCx, RequestedTheme, SymbolGlyph, ThemeRef, Thickness,
+    TitleBar, ToggleSwitch, VerticalAlignment, app_bar_button_icon, app_bar_separator, body,
+    body_strong, border, button, caption, command_bar, grid, hstack, scroll_viewer,
+    set_requested_theme, subtitle, vstack,
 };
+
+const SURFACE_RADIUS: f64 = 4.0;
 
 pub fn run() -> Result<()> {
     let _span = ProfileSpan::start("gui.run");
@@ -58,7 +60,7 @@ fn render_root(
         .header(text.page(model.page()))
         .selected_tag(model.page().tag())
         .pane_open(model.nav_pane_open())
-        .pane_display_mode(NavViewPaneDisplayMode::Left)
+        .pane_display_mode(NavViewPaneDisplayMode::LeftCompact)
         .settings_visible(false)
         .auto_suggest_placeholder(text.search_windows)
         .on_search_text_changed({
@@ -156,18 +158,13 @@ fn windows_page(
         .grid_row(0),
         status_bar(model, set_model).grid_row(1),
         aspect_controls(model, set_model, text).grid_row(2),
-        grid((
-            scroll_viewer(list)
-                .grid_column(0)
-                .vertical_alignment(VerticalAlignment::Stretch),
-            detail_panel(runtime, model, set_model, selected, text).grid_column(1),
-        ))
-        .grid_row(3)
-        .columns([GridLength::Star(3.0), GridLength::Star(2.0)])
-        .column_spacing(16.0)
-        .vertical_alignment(VerticalAlignment::Stretch),
+        detail_panel(runtime, model, set_model, selected, text).grid_row(3),
+        scroll_viewer(list)
+            .grid_row(4)
+            .vertical_alignment(VerticalAlignment::Stretch),
     ))
     .rows([
+        GridLength::Auto,
         GridLength::Auto,
         GridLength::Auto,
         GridLength::Auto,
@@ -200,14 +197,11 @@ fn window_card(
 ) -> Element {
     let hwnd = window.hwnd;
     let selected = model.selected() == Some(hwnd);
-    let title = title_or_placeholder(window);
-    let border_color = if selected {
-        Color::rgb(0, 120, 212)
-    } else {
-        Color::rgb(120, 120, 120)
-    };
+    let title = truncate_middle(&title_or_placeholder(window), 48);
+    let process_name = truncate_middle(&window.process_name.to_string(), 40);
+    let class_name = truncate_middle(&window.class_name, 40);
 
-    border(
+    surface(
         vstack((
             vstack((
                 body_strong(title).wrap(),
@@ -219,7 +213,7 @@ fn window_card(
             ))
             .spacing(2.0),
             vstack((
-                caption(format!("{}: {}", text.process, window.process_name)).wrap(),
+                caption(format!("{}: {}", text.process, process_name)).wrap(),
                 caption(format!(
                     "{}: {}    {}: {}",
                     text.pid, window.pid, text.hwnd, window.hwnd
@@ -228,7 +222,7 @@ fn window_card(
                 caption(format!(
                     "{}: {}    {}: {}x{}",
                     text.class,
-                    window.class_name,
+                    class_name,
                     text.size,
                     window.rect.width().0,
                     window.rect.height().0
@@ -280,11 +274,8 @@ fn window_card(
         ))
         .spacing(6.0)
         .padding(10.0),
+        selected,
     )
-    .corner_radius(6.0)
-    .border_brush(Brush::from(border_color))
-    .border_thickness(Thickness::uniform(if selected { 2.0 } else { 1.0 }))
-    .into()
 }
 
 fn detail_panel(
@@ -295,63 +286,73 @@ fn detail_panel(
     text: Text,
 ) -> Element {
     match selected {
-        Some(window) => border(
-            vstack((
-                subtitle(text.details),
-                body_strong(title_or_placeholder(&window)).wrap(),
-                caption(format!("{}: {}", text.process, window.process_name)).wrap(),
-                caption(format!("{}: {}", text.pid, window.pid)).wrap(),
-                caption(format!("{}: {}", text.hwnd, window.hwnd)).wrap(),
-                caption(format!("{}: {}", text.class, window.class_name)).wrap(),
-                caption(format!(
-                    "{}: left={} top={} right={} bottom={}",
-                    text.rect,
-                    window.rect.left.0,
-                    window.rect.top.0,
-                    window.rect.right.0,
-                    window.rect.bottom.0
+        Some(window) => {
+            let title = truncate_middle(&title_or_placeholder(&window), 56);
+            let process_name = truncate_middle(&window.process_name.to_string(), 44);
+            let class_name = truncate_middle(&window.class_name, 44);
+
+            surface(
+                vstack((
+                    subtitle(text.details),
+                    body_strong(title).wrap(),
+                    hstack((
+                        caption(format!("{}: {}", text.process, process_name)).wrap(),
+                        caption(format!("{}: {}", text.pid, window.pid)).wrap(),
+                        caption(format!("{}: {}", text.hwnd, window.hwnd)).wrap(),
+                    ))
+                    .spacing(14.0),
+                    hstack((
+                        caption(format!("{}: {}", text.class, class_name)).wrap(),
+                        caption(format!(
+                            "{}: left={} top={}",
+                            text.rect, window.rect.left.0, window.rect.top.0
+                        ))
+                        .wrap(),
+                        caption(format!(
+                            "right={} bottom={}",
+                            window.rect.right.0, window.rect.bottom.0
+                        ))
+                        .wrap(),
+                    ))
+                    .spacing(14.0),
+                    hstack((
+                        button(text.apply).accent().on_click({
+                            let runtime = runtime.clone();
+                            let set_model = set_model.clone();
+                            let model = model.clone().with_busy(true);
+                            let hwnd = window.hwnd;
+                            move || runtime.apply_window(hwnd, set_model.clone(), model.clone())
+                        }),
+                        button(text.apply_aspect_fit).on_click({
+                            let runtime = runtime.clone();
+                            let set_model = set_model.clone();
+                            let model = model.clone();
+                            let hwnd = window.hwnd;
+                            move || {
+                                apply_aspect_fit(&runtime, hwnd, set_model.clone(), model.clone());
+                            }
+                        }),
+                        button(text.restore).on_click({
+                            let runtime = runtime.clone();
+                            let set_model = set_model.clone();
+                            let model = model.clone().with_busy(true);
+                            let hwnd = window.hwnd;
+                            move || runtime.restore_window(hwnd, set_model.clone(), model.clone())
+                        }),
+                    ))
+                    .spacing(8.0),
                 ))
-                .wrap(),
-                hstack((
-                    button(text.apply).accent().on_click({
-                        let runtime = runtime.clone();
-                        let set_model = set_model.clone();
-                        let model = model.clone().with_busy(true);
-                        let hwnd = window.hwnd;
-                        move || runtime.apply_window(hwnd, set_model.clone(), model.clone())
-                    }),
-                    button(text.apply_aspect_fit).on_click({
-                        let runtime = runtime.clone();
-                        let set_model = set_model.clone();
-                        let model = model.clone();
-                        let hwnd = window.hwnd;
-                        move || {
-                            apply_aspect_fit(&runtime, hwnd, set_model.clone(), model.clone());
-                        }
-                    }),
-                    button(text.restore).on_click({
-                        let runtime = runtime.clone();
-                        let set_model = set_model.clone();
-                        let model = model.clone().with_busy(true);
-                        let hwnd = window.hwnd;
-                        move || runtime.restore_window(hwnd, set_model.clone(), model.clone())
-                    }),
-                ))
-                .spacing(8.0),
-            ))
-            .spacing(8.0)
-            .padding(12.0),
-        )
-        .corner_radius(6.0)
-        .border_brush(Brush::from(Color::rgb(120, 120, 120)))
-        .border_thickness(Thickness::uniform(1.0))
-        .into(),
+                .spacing(6.0)
+                .padding(10.0),
+                false,
+            )
+        }
         None => empty_state(text.empty_selection_title, text.empty_selection_message),
     }
 }
 
 fn aspect_controls(model: &GuiModel, set_model: &AsyncSetState<GuiModel>, text: Text) -> Element {
-    border(
+    surface(
         hstack((
             ComboBox::new(AspectPreset::ITEMS)
                 .header(text.aspect_preset)
@@ -408,11 +409,8 @@ fn aspect_controls(model: &GuiModel, set_model: &AsyncSetState<GuiModel>, text: 
         ))
         .spacing(12.0)
         .padding(10.0),
+        false,
     )
-    .corner_radius(6.0)
-    .border_brush(Brush::from(Color::rgb(90, 90, 90)))
-    .border_thickness(Thickness::uniform(1.0))
-    .into()
 }
 
 fn display_items(model: &GuiModel, text: Text) -> Vec<String> {
@@ -490,12 +488,7 @@ fn favorites_page(
         }),
     );
 
-    border(vstack(children).spacing(12.0).padding(20.0))
-        .corner_radius(8.0)
-        .border_brush(Brush::from(Color::rgb(120, 120, 120)))
-        .border_thickness(Thickness::uniform(1.0))
-        .margin(24.0)
-        .into()
+    surface(vstack(children).spacing(12.0).padding(18.0), false).margin(24.0)
 }
 
 fn settings_page(
@@ -506,7 +499,7 @@ fn settings_page(
 ) -> Element {
     vstack((
         body(text.settings_intro).wrap(),
-        border(
+        surface(
             vstack((
                 subtitle(text.environment_controls),
                 hstack((
@@ -578,11 +571,9 @@ fn settings_page(
                     }),
             ))
             .spacing(12.0)
-            .padding(18.0),
-        )
-        .corner_radius(8.0)
-        .border_brush(Brush::from(Color::rgb(120, 120, 120)))
-        .border_thickness(Thickness::uniform(1.0)),
+            .padding(16.0),
+            false,
+        ),
     ))
     .spacing(14.0)
     .padding(24.0)
@@ -677,15 +668,27 @@ fn status_bar(model: &GuiModel, set_model: &AsyncSetState<GuiModel>) -> Element 
 }
 
 fn empty_state(title_text: impl Into<String>, message: impl Into<String>) -> Element {
-    border(
+    surface(
         vstack((subtitle(title_text), body(message).wrap()))
             .spacing(8.0)
-            .padding(20.0),
+            .padding(18.0),
+        false,
     )
-    .corner_radius(8.0)
-    .border_brush(Brush::from(Color::rgb(120, 120, 120)))
-    .border_thickness(Thickness::uniform(1.0))
-    .into()
+}
+
+fn surface(content: impl Into<Element>, selected: bool) -> Element {
+    let stroke = if selected {
+        ThemeRef::Accent
+    } else {
+        ThemeRef::CardStroke
+    };
+
+    border(content)
+        .corner_radius(SURFACE_RADIUS)
+        .border_brush(stroke)
+        .border_thickness(Thickness::uniform(1.0))
+        .background(ThemeRef::CardBackground)
+        .into()
 }
 
 fn title_or_placeholder(window: &WindowSnapshot) -> String {
@@ -695,6 +698,32 @@ fn title_or_placeholder(window: &WindowSnapshot) -> String {
     } else {
         title.to_owned()
     }
+}
+
+fn truncate_middle(value: &str, max_chars: usize) -> String {
+    let char_count = value.chars().count();
+    if char_count <= max_chars {
+        return value.to_owned();
+    }
+
+    if max_chars <= 3 {
+        return "...".chars().take(max_chars).collect();
+    }
+
+    let keep = max_chars - 3;
+    let prefix_len = keep / 2;
+    let suffix_len = keep - prefix_len;
+    let prefix = value.chars().take(prefix_len).collect::<String>();
+    let suffix = value
+        .chars()
+        .rev()
+        .take(suffix_len)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect::<String>();
+
+    format!("{prefix}...{suffix}")
 }
 
 #[allow(dead_code)]

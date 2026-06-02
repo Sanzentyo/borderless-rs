@@ -14,6 +14,14 @@ use windows_reactor::{
 };
 
 const SURFACE_RADIUS: f64 = 4.0;
+const PAGE_PADDING: f64 = 24.0;
+const PANEL_PADDING: f64 = 16.0;
+const CARD_PADDING: f64 = 16.0;
+const LIST_PANE_WIDTH: f64 = 520.0;
+const DETAILS_PANE_WIDTH: f64 = 300.0;
+const SECTION_SPACING: f64 = 16.0;
+const TEXT_SPACING: f64 = 6.0;
+const ACTION_SPACING: f64 = 10.0;
 
 pub fn run() -> Result<()> {
     let _span = ProfileSpan::start("gui.run");
@@ -133,7 +141,7 @@ fn windows_page(
         empty_state(text.empty_windows_title, text.empty_windows_message)
     } else {
         vstack(window_cards(runtime, model, set_model, &rows, text))
-            .spacing(10.0)
+            .spacing(12.0)
             .into()
     };
 
@@ -158,20 +166,26 @@ fn windows_page(
         .grid_row(0),
         status_bar(model, set_model).grid_row(1),
         aspect_controls(model, set_model, text).grid_row(2),
-        detail_panel(runtime, model, set_model, selected, text).grid_row(3),
-        scroll_viewer(list)
-            .grid_row(4)
-            .vertical_alignment(VerticalAlignment::Stretch),
+        hstack((
+            scroll_viewer(list)
+                .width(LIST_PANE_WIDTH)
+                .vertical_alignment(VerticalAlignment::Stretch),
+            detail_panel(runtime, model, set_model, selected, text)
+                .width(DETAILS_PANE_WIDTH)
+                .vertical_alignment(VerticalAlignment::Stretch),
+        ))
+        .spacing(SECTION_SPACING)
+        .grid_row(3)
+        .vertical_alignment(VerticalAlignment::Stretch),
     ))
     .rows([
         GridLength::Auto,
         GridLength::Auto,
         GridLength::Auto,
-        GridLength::Auto,
         GridLength::Star(1.0),
     ])
-    .row_spacing(12.0)
-    .padding(20.0)
+    .row_spacing(SECTION_SPACING)
+    .padding(PAGE_PADDING)
     .into()
 }
 
@@ -211,7 +225,7 @@ fn window_card(
                     text.targetable
                 }),
             ))
-            .spacing(2.0),
+            .spacing(TEXT_SPACING),
             vstack((
                 caption(format!("{}: {}", text.process, process_name)).wrap(),
                 caption(format!(
@@ -229,13 +243,8 @@ fn window_card(
                 ))
                 .wrap(),
             ))
-            .spacing(2.0),
+            .spacing(TEXT_SPACING),
             hstack((
-                button(text.select).subtle().on_click({
-                    let set_model = set_model.clone();
-                    let model = model.clone();
-                    move || set_model.call(model.clone().with_selected(Some(hwnd)))
-                }),
                 button(text.apply).accent().on_click({
                     let runtime = runtime.clone();
                     let set_model = set_model.clone();
@@ -270,12 +279,18 @@ fn window_card(
                     }
                 }),
             ))
-            .spacing(8.0),
+            .spacing(ACTION_SPACING),
         ))
-        .spacing(6.0)
-        .padding(10.0),
+        .spacing(10.0)
+        .padding(CARD_PADDING),
         selected,
     )
+    .width(LIST_PANE_WIDTH)
+    .on_tapped({
+        let set_model = set_model.clone();
+        let model = model.clone();
+        move || set_model.call(model.clone().with_selected(Some(hwnd)))
+    })
 }
 
 fn detail_panel(
@@ -295,13 +310,13 @@ fn detail_panel(
                 vstack((
                     subtitle(text.details),
                     body_strong(title).wrap(),
-                    hstack((
+                    vstack((
                         caption(format!("{}: {}", text.process, process_name)).wrap(),
                         caption(format!("{}: {}", text.pid, window.pid)).wrap(),
                         caption(format!("{}: {}", text.hwnd, window.hwnd)).wrap(),
                     ))
-                    .spacing(14.0),
-                    hstack((
+                    .spacing(TEXT_SPACING),
+                    vstack((
                         caption(format!("{}: {}", text.class, class_name)).wrap(),
                         caption(format!(
                             "{}: left={} top={}",
@@ -314,7 +329,7 @@ fn detail_panel(
                         ))
                         .wrap(),
                     ))
-                    .spacing(14.0),
+                    .spacing(TEXT_SPACING),
                     hstack((
                         button(text.apply).accent().on_click({
                             let runtime = runtime.clone();
@@ -340,10 +355,10 @@ fn detail_panel(
                             move || runtime.restore_window(hwnd, set_model.clone(), model.clone())
                         }),
                     ))
-                    .spacing(8.0),
+                    .spacing(ACTION_SPACING),
                 ))
-                .spacing(6.0)
-                .padding(10.0),
+                .spacing(10.0)
+                .padding(PANEL_PADDING),
                 false,
             )
         }
@@ -407,8 +422,8 @@ fn aspect_controls(model: &GuiModel, set_model: &AsyncSetState<GuiModel>, text: 
                     move |index| set_model.call(model.clone().with_target_display_index(index))
                 }),
         ))
-        .spacing(12.0)
-        .padding(10.0),
+        .spacing(16.0)
+        .padding(PANEL_PADDING),
         false,
     )
 }
@@ -488,7 +503,13 @@ fn favorites_page(
         }),
     );
 
-    surface(vstack(children).spacing(12.0).padding(18.0), false).margin(24.0)
+    surface(
+        vstack(children)
+            .spacing(SECTION_SPACING)
+            .padding(PANEL_PADDING),
+        false,
+    )
+    .margin(PAGE_PADDING)
 }
 
 fn settings_page(
@@ -528,7 +549,7 @@ fn settings_page(
                         move || runtime.set_cursor_visible(false, set_model.clone(), model.clone())
                     }),
                 ))
-                .spacing(8.0),
+                .spacing(ACTION_SPACING),
                 ToggleSwitch::new(model.watcher_running())
                     .header(text.watcher_actor)
                     .on_content(text.running)
@@ -570,13 +591,13 @@ fn settings_page(
                         }
                     }),
             ))
-            .spacing(12.0)
-            .padding(16.0),
+            .spacing(SECTION_SPACING)
+            .padding(PANEL_PADDING),
             false,
         ),
     ))
-    .spacing(14.0)
-    .padding(24.0)
+    .spacing(SECTION_SPACING)
+    .padding(PAGE_PADDING)
     .into()
 }
 
@@ -594,8 +615,8 @@ fn logs_page(model: &GuiModel, text: Text) -> Element {
         scroll_viewer(vstack(rows).spacing(4.0)).grid_row(1),
     ))
     .rows([GridLength::Auto, GridLength::Star(1.0)])
-    .row_spacing(12.0)
-    .padding(24.0)
+    .row_spacing(SECTION_SPACING)
+    .padding(PAGE_PADDING)
     .into()
 }
 
@@ -670,8 +691,8 @@ fn status_bar(model: &GuiModel, set_model: &AsyncSetState<GuiModel>) -> Element 
 fn empty_state(title_text: impl Into<String>, message: impl Into<String>) -> Element {
     surface(
         vstack((subtitle(title_text), body(message).wrap()))
-            .spacing(8.0)
-            .padding(18.0),
+            .spacing(10.0)
+            .padding(PANEL_PADDING),
         false,
     )
 }

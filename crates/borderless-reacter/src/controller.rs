@@ -55,21 +55,38 @@ where
             ControllerMsg::ListWindows(reply) => {
                 let _ = reply.send(self.backend.windows().unwrap_or_default());
             }
+            ControllerMsg::ListMonitors(reply) => {
+                let _ = reply.send(self.backend.monitors().unwrap_or_default());
+            }
             ControllerMsg::ApplyByHwnd(hwnd, reply) => {
-                let result = self.apply_window(state, self.backend.by_hwnd(hwnd).ok().flatten());
+                let result =
+                    self.apply_window(state, self.backend.by_hwnd(hwnd).ok().flatten(), None);
+                let _ = reply.send(result.map_err(|err| err.to_string()));
+            }
+            ControllerMsg::ApplyByHwndWithOptions(hwnd, options, reply) => {
+                let result = self.apply_window(
+                    state,
+                    self.backend.by_hwnd(hwnd).ok().flatten(),
+                    Some(&options),
+                );
                 let _ = reply.send(result.map_err(|err| err.to_string()));
             }
             ControllerMsg::ApplyByPid(pid, reply) => {
-                let result = self.apply_window(state, self.backend.by_pid(pid).ok().flatten());
+                let result =
+                    self.apply_window(state, self.backend.by_pid(pid).ok().flatten(), None);
                 let _ = reply.send(result.map_err(|err| err.to_string()));
             }
             ControllerMsg::ApplyByProcessName(name, reply) => {
-                let result =
-                    self.apply_window(state, self.backend.by_process_name(&name).ok().flatten());
+                let result = self.apply_window(
+                    state,
+                    self.backend.by_process_name(&name).ok().flatten(),
+                    None,
+                );
                 let _ = reply.send(result.map_err(|err| err.to_string()));
             }
             ControllerMsg::ApplyByTitle(title, reply) => {
-                let result = self.apply_window(state, self.backend.by_title(&title).ok().flatten());
+                let result =
+                    self.apply_window(state, self.backend.by_title(&title).ok().flatten(), None);
                 let _ = reply.send(result.map_err(|err| err.to_string()));
             }
             ControllerMsg::Restore(hwnd, reply) => {
@@ -137,6 +154,7 @@ where
         &self,
         state: &mut ControllerState,
         window: Option<WindowSnapshot>,
+        explicit_options: Option<&borderless_core::FavoriteOptions>,
     ) -> Result<Hwnd, borderless_core::CoreError> {
         let window = window.ok_or(borderless_core::CoreError::Transition("window not found"))?;
         let favorite = state
@@ -144,8 +162,9 @@ where
             .favorites
             .iter()
             .find(|favorite| favorite.matches(&window).unwrap_or(false));
-        let options = favorite
-            .map(|favorite| favorite.options.clone())
+        let options = explicit_options
+            .cloned()
+            .or_else(|| favorite.map(|favorite| favorite.options.clone()))
             .unwrap_or_default();
         let monitors = self.backend.monitors()?;
         let prepared =

@@ -35,6 +35,10 @@ impl FavoriteMatcher {
 pub enum FavoriteSize {
     #[default]
     FullScreen,
+    AspectFit {
+        width: u32,
+        height: u32,
+    },
     Specific {
         rect: Rect,
     },

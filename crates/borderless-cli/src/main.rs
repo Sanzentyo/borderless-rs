@@ -115,7 +115,7 @@ async fn main() -> Result<()> {
             .map_err(|err| anyhow!(err))?;
         }
         Command::Watch => loop {
-            tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+            tokio::time::sleep(std::time::Duration::from_hours(1)).await;
         },
         Command::Favorite { command } => handle_favorite(reacter.controller, command).await?,
         Command::Taskbar { visible } => {

@@ -19,6 +19,14 @@ impl WindowCatalog for WindowsCatalog {
     fn monitors(&self) -> CoreResult<Vec<borderless_core::MonitorSnapshot>> {
         monitor::monitors()
     }
+
+    fn by_hwnd(&self, hwnd: borderless_core::Hwnd) -> CoreResult<Option<WindowSnapshot>> {
+        let raw = ffi::hwnd(hwnd);
+        if ffi::is_null_hwnd(raw) {
+            return Ok(None);
+        }
+        Ok(snapshot_from_hwnd(raw))
+    }
 }
 
 fn enumerate_windows() -> CoreResult<Vec<WindowSnapshot>> {

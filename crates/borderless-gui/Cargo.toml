@@ -14,7 +14,10 @@ ractor.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
-windows.workspace = true
+windows-reactor.workspace = true
+
+[build-dependencies]
+windows-reactor-setup.workspace = true
 
 [lints]
 workspace = true

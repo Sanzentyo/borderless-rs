@@ -25,17 +25,17 @@ pub(crate) fn monitors() -> CoreResult<Vec<MonitorSnapshot>> {
             ..Default::default()
         };
 
-        if unsafe { GetMonitorInfoW(hmonitor, &raw mut info).as_bool() } {
-            if let (Ok(rect), Ok(work_area)) = (ffi::rect(info.rcMonitor), ffi::rect(info.rcWork)) {
-                MONITORS.with(|cell| {
-                    cell.borrow_mut().push(MonitorSnapshot {
-                        id: MonitorId(hmonitor.0 as isize),
-                        rect,
-                        work_area,
-                        primary: (info.dwFlags & 1) == 1,
-                    });
+        if unsafe { GetMonitorInfoW(hmonitor, &raw mut info).as_bool() }
+            && let (Ok(rect), Ok(work_area)) = (ffi::rect(info.rcMonitor), ffi::rect(info.rcWork))
+        {
+            MONITORS.with(|cell| {
+                cell.borrow_mut().push(MonitorSnapshot {
+                    id: MonitorId(hmonitor.0 as isize),
+                    rect,
+                    work_area,
+                    primary: (info.dwFlags & 1) == 1,
                 });
-            }
+            });
         }
         true.into()
     }

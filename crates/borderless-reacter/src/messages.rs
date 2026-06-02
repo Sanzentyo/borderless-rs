@@ -1,10 +1,14 @@
-use borderless_core::{Favorite, Hwnd, Pid, ProcessName, WindowSnapshot, WindowTitle};
+use borderless_core::{
+    Favorite, FavoriteOptions, Hwnd, MonitorSnapshot, Pid, ProcessName, WindowSnapshot, WindowTitle,
+};
 use ractor::RpcReplyPort;
 
 #[derive(Debug)]
 pub enum ControllerMsg {
     ListWindows(RpcReplyPort<Vec<WindowSnapshot>>),
+    ListMonitors(RpcReplyPort<Vec<MonitorSnapshot>>),
     ApplyByHwnd(Hwnd, RpcReplyPort<Result<Hwnd, String>>),
+    ApplyByHwndWithOptions(Hwnd, FavoriteOptions, RpcReplyPort<Result<Hwnd, String>>),
     ApplyByPid(Pid, RpcReplyPort<Result<Hwnd, String>>),
     ApplyByProcessName(ProcessName, RpcReplyPort<Result<Hwnd, String>>),
     ApplyByTitle(WindowTitle, RpcReplyPort<Result<Hwnd, String>>),

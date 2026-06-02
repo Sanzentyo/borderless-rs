@@ -17,7 +17,7 @@ impl WindowManipulator for WindowsManipulator {
     fn apply_plan(&self, plan: &BorderlessPlan) -> CoreResult<OriginalWindowState> {
         apply_borderless_plan(plan)?;
         if plan.hide_windows_taskbar {
-            taskbar::set_visible(false);
+            taskbar::set_visible_for_rect(false, plan.placement.rect);
         }
         if plan.hide_mouse_cursor {
             self.cursor.set_visible(false)?;

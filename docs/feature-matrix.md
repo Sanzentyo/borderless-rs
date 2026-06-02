@@ -11,10 +11,11 @@
 | Specific screen/rect | `TargetFrame` and `MonitorSnapshot` | Current monitor, specific monitor, exact rect. |
 | Offsets | `EdgeOffsets` | Left/top/right/bottom. |
 | No size/fullscreen/specific | `FavoriteSize` | ADT-driven policy. |
+| Aspect-ratio preserving fit | `FavoriteSize::AspectFit` | Presets, custom ratios, and current-window ratio center inside the selected target frame. |
 | Topmost | `Placement::topmost` | Uses HWND_TOPMOST / NOTOPMOST. |
 | Menu removal | `MenuPolicy` | Safe default is keep; removal is explicit. |
-| Taskbar hide/show | `taskbar.rs` | Finds `Shell_TrayWnd` and secondary taskbars. |
+| Taskbar hide/show | `taskbar.rs` | Manual show/hide can affect all taskbars; apply-time hide targets taskbars intersecting the placement rect. |
 | Cursor hide/show | `cursor.rs` | Uses ShowCursor balance policy. |
 | Mute in background | `audio.rs` hook | Modeled by PID; CoreAudio implementation skeleton. |
-| GUI | `borderless-gui` | Raw Win32 window + actor bridge. |
+| GUI | `borderless-gui` | `windows-reactor` / WinUI frontend + actor bridge. |
 | CLI | `borderless-cli` | Same controller actor as GUI. |

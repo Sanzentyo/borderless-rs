@@ -10,10 +10,13 @@ members = [
 
 [workspace.package]
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.95"
 license = "MIT"
 authors = ["Borderless Oxide contributors"]
-repository = "https://example.invalid/borderless-oxide"
+repository = "https://github.com/Sanzentyo/borderless-rs"
+
+[workspace.metadata.windows-rs]
+rev = "db87ba9940e49e84fbacb1fe494ec81a2a7690db"
 
 [workspace.dependencies]
 anyhow = "1.0.102"
@@ -29,7 +32,7 @@ tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros", "sync", "
 toml = "1.1.2"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
-windows = { version = "0.62.2", features = [
+windows = { git = "https://github.com/microsoft/windows-rs", rev = "db87ba9940e49e84fbacb1fe494ec81a2a7690db", package = "windows", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
     "Win32_Media_Audio",
@@ -42,6 +45,8 @@ windows = { version = "0.62.2", features = [
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging"
 ] }
+windows-reactor = { git = "https://github.com/microsoft/windows-rs", rev = "db87ba9940e49e84fbacb1fe494ec81a2a7690db", package = "windows-reactor" }
+windows-reactor-setup = { git = "https://github.com/microsoft/windows-rs", rev = "db87ba9940e49e84fbacb1fe494ec81a2a7690db", package = "windows-reactor-setup" }
 
 borderless-core = { path = "crates/borderless-core" }
 borderless-win = { path = "crates/borderless-win" }

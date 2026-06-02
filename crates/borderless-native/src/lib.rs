@@ -1,59 +1,36 @@
-#![cfg_attr(not(windows), forbid(unsafe_code))]
-
-#[cfg(not(windows))]
-compile_error!("borderless-win is Windows-only; build for x86_64-pc-windows-msvc");
-
-#[cfg(windows)]
 mod audio;
-#[cfg(windows)]
 mod catalog;
-#[cfg(windows)]
 mod cursor;
-#[cfg(windows)]
 mod ffi;
-#[cfg(windows)]
 mod manipulation;
-#[cfg(windows)]
 mod monitor;
-#[cfg(windows)]
 mod process;
-#[cfg(windows)]
 mod store;
-#[cfg(windows)]
 mod taskbar;
 
-#[cfg(windows)]
 pub use audio::AudioSessions;
-#[cfg(windows)]
 pub use catalog::WindowsCatalog;
-#[cfg(windows)]
 pub use cursor::CursorVisibility;
-#[cfg(windows)]
 pub use manipulation::WindowsManipulator;
-#[cfg(windows)]
 pub use store::TomlSettingsStore;
 
-#[cfg(windows)]
 use borderless_core::{CoreResult, EventSink};
 
-#[cfg(windows)]
 #[derive(Clone, Debug, Default)]
-pub struct WindowsBackend {
+pub struct NativeBackend {
     catalog: WindowsCatalog,
     manipulator: WindowsManipulator,
     store: TomlSettingsStore,
 }
 
-#[cfg(windows)]
-impl WindowsBackend {
+impl NativeBackend {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 }
 
-#[cfg(windows)]
-impl borderless_core::WindowCatalog for WindowsBackend {
+impl borderless_core::WindowCatalog for NativeBackend {
     fn windows(&self) -> CoreResult<Vec<borderless_core::WindowSnapshot>> {
         borderless_core::WindowCatalog::windows(&self.catalog)
     }
@@ -63,8 +40,7 @@ impl borderless_core::WindowCatalog for WindowsBackend {
     }
 }
 
-#[cfg(windows)]
-impl borderless_core::WindowManipulator for WindowsBackend {
+impl borderless_core::WindowManipulator for NativeBackend {
     fn apply_plan(
         &self,
         plan: &borderless_core::BorderlessPlan,
@@ -89,8 +65,7 @@ impl borderless_core::WindowManipulator for WindowsBackend {
     }
 }
 
-#[cfg(windows)]
-impl borderless_core::SettingsStore for WindowsBackend {
+impl borderless_core::SettingsStore for NativeBackend {
     fn load_config(&self) -> CoreResult<borderless_core::AppConfig> {
         borderless_core::SettingsStore::load_config(&self.store)
     }
@@ -100,8 +75,7 @@ impl borderless_core::SettingsStore for WindowsBackend {
     }
 }
 
-#[cfg(windows)]
-impl EventSink for WindowsBackend {
+impl EventSink for NativeBackend {
     fn emit(&self, event: borderless_core::reducer::DomainEvent) {
         tracing::debug!(?event, "domain event");
     }

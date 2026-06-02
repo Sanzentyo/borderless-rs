@@ -5,12 +5,12 @@ use borderless_core::{SettingsStore, WindowCatalog, WindowManipulator};
 use ractor::{Actor, ActorRef};
 use std::sync::Arc;
 
-pub struct ReacterHandle {
+pub struct RuntimeHandle {
     pub controller: ActorRef<ControllerMsg>,
     pub watcher: ActorRef<WatcherMsg>,
 }
 
-pub async fn spawn_reacter<B>(backend: B) -> Result<ReacterHandle, ractor::SpawnErr>
+pub async fn spawn_runtime<B>(backend: B) -> Result<RuntimeHandle, ractor::SpawnErr>
 where
     B: WindowCatalog + WindowManipulator + SettingsStore + Send + Sync + 'static,
 {
@@ -27,7 +27,7 @@ where
         (),
     )
     .await?;
-    Ok(ReacterHandle {
+    Ok(RuntimeHandle {
         controller,
         watcher,
     })

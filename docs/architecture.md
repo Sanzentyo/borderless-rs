@@ -4,17 +4,17 @@
 
 ```text
 borderless-cli ─┐
-                ├── borderless-reacter ─── borderless-core traits ─── borderless-win
+                ├── borderless-runtime ─── borderless-core traits ─── borderless-native
 borderless-gui ─┘
 
 borderless-core has no Win32 dependency and is testable as pure state transitions.
-borderless-win owns every Win32 handle, unsafe call, and OS mutation.
+borderless-native owns every Win32 handle, unsafe call, and OS mutation.
 ```
 
 ## Sans I/O boundary
 
 `borderless-core::reducer` turns UI/user intents into `Effect` values without touching the OS.
-The CLI and GUI submit intents to the reacter controller. The controller queries the backend,
+The CLI and GUI submit intents to the runtime controller. The controller queries the backend,
 uses the pure core to create `BorderlessPlan`, then executes the plan through `WindowManipulator`.
 
 ## TypeState flow
@@ -32,7 +32,7 @@ BorderlessSession<Observed>
 Only the prepared state exposes a concrete `BorderlessPlan`. Only the applied state carries the
 `OriginalWindowState` needed for restore. This prevents accidental restore/apply order mistakes.
 
-## Reacter / actor topology
+## Runtime / actor topology
 
 ```text
 Supervisor
@@ -55,5 +55,6 @@ The CLI and GUI depend on those traits indirectly through actors, not on Win32 A
 
 ## Windows-only policy
 
-Non-Windows binaries use `compile_error!`. The domain crate can still be tested anywhere, but the
-application target is `x86_64-pc-windows-msvc`.
+The application target is `x86_64-pc-windows-msvc`. The project does not maintain cross-platform
+application shims; the core crate stays free of Win32 calls only so domain behavior remains easy to
+test.

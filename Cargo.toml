@@ -2,8 +2,8 @@
 resolver = "3"
 members = [
     "crates/borderless-core",
-    "crates/borderless-win",
-    "crates/borderless-reacter",
+    "crates/borderless-native",
+    "crates/borderless-runtime",
     "crates/borderless-cli",
     "crates/borderless-gui",
 ]
@@ -49,8 +49,8 @@ windows-reactor = { git = "https://github.com/microsoft/windows-rs", rev = "db87
 windows-reactor-setup = { git = "https://github.com/microsoft/windows-rs", rev = "db87ba9940e49e84fbacb1fe494ec81a2a7690db", package = "windows-reactor-setup" }
 
 borderless-core = { path = "crates/borderless-core" }
-borderless-win = { path = "crates/borderless-win" }
-borderless-reacter = { path = "crates/borderless-reacter" }
+borderless-native = { path = "crates/borderless-native" }
+borderless-runtime = { path = "crates/borderless-runtime" }
 
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "deny"

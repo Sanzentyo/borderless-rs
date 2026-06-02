@@ -116,8 +116,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "borderless-core",
- "borderless-reacter",
- "borderless-win",
+ "borderless-native",
+ "borderless-runtime",
  "clap",
  "ractor",
  "tokio",
@@ -141,8 +141,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "borderless-core",
- "borderless-reacter",
- "borderless-win",
+ "borderless-native",
+ "borderless-runtime",
  "ractor",
  "tokio",
  "tracing",
@@ -152,18 +152,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "borderless-reacter"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "borderless-core",
- "ractor",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "borderless-win"
+name = "borderless-native"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -174,6 +163,17 @@ dependencies = [
  "toml",
  "tracing",
  "windows",
+]
+
+[[package]]
+name = "borderless-runtime"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "borderless-core",
+ "ractor",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

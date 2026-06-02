@@ -6,5 +6,5 @@ pub mod supervisor;
 pub mod watcher;
 
 pub use controller::ControllerActor;
-pub use messages::{ControllerMsg, ReacterEvent, WatcherMsg};
-pub use supervisor::{ReacterHandle, spawn_reacter};
+pub use messages::{ControllerMsg, RuntimeEvent, WatcherMsg};
+pub use supervisor::{RuntimeHandle, spawn_runtime};

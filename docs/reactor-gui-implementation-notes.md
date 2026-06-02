@@ -4,7 +4,7 @@ This implementation migrates `borderless-gui` from a raw Win32 proof-of-concept 
 
 ## Design goals
 
-- Keep OS mutation behind `borderless-win` and actor messages.
+- Keep OS mutation behind `borderless-native` and actor messages.
 - Keep GUI state as pure Rust data in `model.rs`.
 - Use Reactor hooks and `AsyncSetState` for UI state updates from actor tasks.
 - Use Windows 11 controls rather than manually painted Win32 controls.
@@ -34,7 +34,7 @@ The GUI intentionally uses a small, documented-looking subset of Reactor:
 
 ## Runtime boundary
 
-`GuiRuntime` owns a Tokio runtime and the `borderless-reacter` controller actor reference. UI callbacks do not call `borderless-win` directly; they spawn actor calls and marshal the next `GuiModel` back through Reactor's `AsyncSetState`.
+`GuiRuntime` owns a Tokio runtime and the `borderless-runtime` controller actor reference. UI callbacks do not call `borderless-native` directly; they spawn actor calls and marshal the next `GuiModel` back through Reactor's `AsyncSetState`.
 
 The first `GuiModel` is also created through the controller actor. Startup performs one `ListWindows` RPC before rendering so the Windows page is populated immediately instead of starting from an empty list that requires a manual refresh.
 
@@ -51,14 +51,14 @@ Observed failure modes during debugging:
 
 ## Dependency structure
 
-The GUI is now a WinUI-backed Reactor frontend, but the mutation boundary is still the same as the CLI: commands flow through `borderless-reacter` and then into the Windows adapter.
+The GUI is now a WinUI-backed Reactor frontend, but the mutation boundary is still the same as the CLI: commands flow through `borderless-runtime` and then into the native backend.
 
 ```mermaid
 flowchart LR
     subgraph "Workspace crates"
         Core["borderless-core\nSans I/O domain, ADTs, traits"]
-        Win["borderless-win\nWin32 adapter + unsafe boundary"]
-        Reacter["borderless-reacter\nractor controller/watcher"]
+        Native["borderless-native\nnative Win32 backend + unsafe boundary"]
+        RuntimeCrate["borderless-runtime\nractor controller/watcher"]
         Cli["borderless-cli\ncommand-line frontend"]
         Gui["borderless-gui\nwindows-reactor frontend"]
     end
@@ -71,19 +71,19 @@ flowchart LR
     end
 
     Cli --> Core
-    Cli --> Reacter
-    Cli --> Win
+    Cli --> RuntimeCrate
+    Cli --> Native
     Gui --> Core
-    Gui --> Reacter
-    Gui --> Win
+    Gui --> RuntimeCrate
+    Gui --> Native
     Gui --> Reactor
     Gui --> Ractor
     Gui --> Tokio
-    Reacter --> Core
-    Reacter --> Ractor
-    Reacter --> Tokio
-    Win --> Core
-    Win --> Windows
+    RuntimeCrate --> Core
+    RuntimeCrate --> Ractor
+    RuntimeCrate --> Tokio
+    Native --> Core
+    Native --> Windows
     Reactor --> Windows
 ```
 
@@ -91,7 +91,7 @@ Important dependency choices:
 
 - `windows` and `windows-reactor` are both sourced from `microsoft/windows-rs` at rev `db87ba9940e49e84fbacb1fe494ec81a2a7690db`.
 - `rust-toolchain.toml` stays on stable; only cargo scripts use `cargo +nightly -Zscript`.
-- `borderless-gui` has `#![forbid(unsafe_code)]`; low-level Windows calls remain in `borderless-win` or Reactor internals.
+- `borderless-gui` has `#![forbid(unsafe_code)]`; low-level Windows calls remain in `borderless-native` or Reactor internals.
 
 ## GUI module structure
 
@@ -106,8 +106,8 @@ flowchart TD
     App --> Model
     App --> Runtime
     Runtime --> Model
-    Runtime --> ReacterApi["borderless-reacter::ControllerMsg"]
-    Runtime --> Backend["borderless-win::WindowsBackend"]
+    Runtime --> RuntimeApi["borderless-runtime::ControllerMsg"]
+    Runtime --> Backend["borderless-native::NativeBackend"]
     Model --> Domain["borderless-core\nHwnd, Favorite, WindowSnapshot"]
 ```
 
@@ -115,7 +115,7 @@ Module responsibilities:
 
 - `app.rs`: builds the Reactor UI shell: `NavigationView`, `TitleBar`, `CommandBar`, cards, detail panel, settings, logs, and status `InfoBar`.
 - `model.rs`: stores page selection, search query, window rows, selected HWND, busy flag, watcher UI state, and local log lines.
-- `runtime.rs`: boots `spawn_reacter(WindowsBackend::new())`, owns the Tokio runtime, and turns UI actions into actor calls.
+- `runtime.rs`: boots `spawn_runtime(NativeBackend::new())`, owns the Tokio runtime, and turns UI actions into actor calls.
 - `gui.rs`: keeps the old `gui::run` path as a shim, but the real entry point is `app::run`.
 
 ## Title bar behavior
@@ -163,7 +163,7 @@ sequenceDiagram
     participant App as "borderless-gui::app"
     participant Runtime as "GuiRuntime"
     participant Controller as "ControllerActor"
-    participant Backend as "WindowsBackend"
+    participant Backend as "NativeBackend"
     participant Reactor as "AsyncSetState<GuiModel>"
 
     User->>App: Click Refresh / Apply / Restore
@@ -190,4 +190,4 @@ This pass provides a real Reactor shell and core window/favorite/settings action
 - foreground tracking and CoreAudio mute-on-background;
 - desktop area selector overlay.
 
-The current structure is designed so those additions land in `borderless-core`, `borderless-win`, and `borderless-reacter`, while `borderless-gui` stays mostly view/model glue.
+The current structure is designed so those additions land in `borderless-core`, `borderless-native`, and `borderless-runtime`, while `borderless-gui` stays mostly view/model glue.

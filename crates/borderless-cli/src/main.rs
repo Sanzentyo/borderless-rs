@@ -1,22 +1,11 @@
-#![cfg_attr(not(windows), allow(unused_imports))]
-
-#[cfg(not(windows))]
-compile_error!("borderless-cli is Windows-only; build for x86_64-pc-windows-msvc");
-
-#[cfg(windows)]
 use anyhow::{Result, anyhow};
-#[cfg(windows)]
 use borderless_core::{
     Favorite, FavoriteId, FavoriteMatcher, FavoriteOptions, Hwnd, Pid, ProcessName, WindowTitle,
 };
-#[cfg(windows)]
-use borderless_reacter::{ControllerMsg, spawn_reacter};
-#[cfg(windows)]
-use borderless_win::WindowsBackend;
-#[cfg(windows)]
+use borderless_native::NativeBackend;
+use borderless_runtime::{ControllerMsg, spawn_runtime};
 use clap::{Args, Parser, Subcommand};
 
-#[cfg(windows)]
 #[derive(Parser, Debug)]
 #[command(version, about = "Borderless Oxide CLI")]
 struct Cli {
@@ -24,7 +13,6 @@ struct Cli {
     command: Command,
 }
 
-#[cfg(windows)]
 #[derive(Subcommand, Debug)]
 enum Command {
     List,
@@ -46,7 +34,6 @@ enum Command {
     },
 }
 
-#[cfg(windows)]
 #[derive(Args, Debug)]
 struct TargetArgs {
     #[arg(long, conflicts_with_all = ["pid", "process_name", "title"])]
@@ -65,7 +52,6 @@ struct TargetArgs {
     hide_cursor: bool,
 }
 
-#[cfg(windows)]
 #[derive(Subcommand, Debug)]
 enum FavoriteCommand {
     AddProcess {
@@ -84,16 +70,15 @@ enum FavoriteCommand {
     },
 }
 
-#[cfg(windows)]
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt().with_env_filter("info").init();
     let cli = Cli::parse();
-    let reacter = spawn_reacter(WindowsBackend::new()).await?;
+    let runtime = spawn_runtime(NativeBackend::new()).await?;
 
     match cli.command {
         Command::List => {
-            let windows = ractor::call!(reacter.controller, ControllerMsg::ListWindows)?;
+            let windows = ractor::call!(runtime.controller, ControllerMsg::ListWindows)?;
             for window in windows {
                 println!(
                     "{} pid={} process={} title={:?} rect={}x{}",
@@ -106,10 +91,10 @@ async fn main() -> Result<()> {
                 );
             }
         }
-        Command::Apply(target) => apply(reacter.controller, target).await?,
+        Command::Apply(target) => apply(runtime.controller, target).await?,
         Command::Restore { hwnd } => {
             let hwnd = parse_hwnd(&hwnd)?;
-            ractor::call!(reacter.controller, |reply| ControllerMsg::Restore(
+            ractor::call!(runtime.controller, |reply| ControllerMsg::Restore(
                 hwnd, reply
             ))?
             .map_err(|err| anyhow!(err))?;
@@ -117,16 +102,16 @@ async fn main() -> Result<()> {
         Command::Watch => loop {
             tokio::time::sleep(std::time::Duration::from_hours(1)).await;
         },
-        Command::Favorite { command } => handle_favorite(reacter.controller, command).await?,
+        Command::Favorite { command } => handle_favorite(runtime.controller, command).await?,
         Command::Taskbar { visible } => {
             ractor::call!(
-                reacter.controller,
+                runtime.controller,
                 |reply| ControllerMsg::SetTaskbarVisible(visible, reply)
             )?
             .map_err(|err| anyhow!(err))?;
         }
         Command::Cursor { visible } => {
-            ractor::call!(reacter.controller, |reply| ControllerMsg::SetCursorVisible(
+            ractor::call!(runtime.controller, |reply| ControllerMsg::SetCursorVisible(
                 visible, reply
             ))?
             .map_err(|err| anyhow!(err))?;
@@ -135,7 +120,6 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-#[cfg(windows)]
 async fn apply(controller: ractor::ActorRef<ControllerMsg>, target: TargetArgs) -> Result<()> {
     let applied = if let Some(hwnd) = target.hwnd {
         let hwnd = parse_hwnd(&hwnd)?;
@@ -161,7 +145,6 @@ async fn apply(controller: ractor::ActorRef<ControllerMsg>, target: TargetArgs) 
     Ok(())
 }
 
-#[cfg(windows)]
 async fn handle_favorite(
     controller: ractor::ActorRef<ControllerMsg>,
     command: FavoriteCommand,
@@ -200,7 +183,6 @@ async fn handle_favorite(
     Ok(())
 }
 
-#[cfg(windows)]
 fn parse_hwnd(value: &str) -> Result<Hwnd> {
     let trimmed = value.trim_start_matches("0x").trim_start_matches("0X");
     let parsed = isize::from_str_radix(trimmed, 16).or_else(|_| value.parse())?;

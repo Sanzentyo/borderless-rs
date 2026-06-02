@@ -65,11 +65,11 @@ cargo run -p borderless-gui --target x86_64-pc-windows-msvc
 
 ## GUI
 
-The GUI is a `windows-reactor` / WinUI frontend. It uses the same `borderless-reacter` controller actor as the CLI, so window enumeration, apply, restore, favorite writes, taskbar, and cursor operations share one runtime boundary.
+The GUI is a `windows-reactor` / WinUI frontend. It uses the same `borderless-runtime` controller actor as the CLI, so window enumeration, apply, restore, favorite writes, taskbar, and cursor operations share one runtime boundary.
 
 ## Safety stance
 
-Win32 manipulation requires `unsafe`. Unsafe calls are isolated in `borderless-win` and upstream Reactor internals; `borderless-core`, `borderless-reacter`, and `borderless-gui` stay safe Rust. See [docs/safety.md](docs/safety.md).
+Win32 manipulation requires `unsafe`. Unsafe calls are isolated in `borderless-native` and upstream Reactor internals; `borderless-core`, `borderless-runtime`, and `borderless-gui` stay safe Rust. See [docs/safety.md](docs/safety.md).
 
 ## Verification status
 

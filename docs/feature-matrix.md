@@ -2,11 +2,11 @@
 
 | Borderless-Gaming behavior | Borderless Oxide location | Notes |
 | --- | --- | --- |
-| List targetable windows | `borderless-win::catalog` | Uses two-pass visible/style filtering. |
-| Apply borderless | `borderless-win::manipulation` | Removes standard/ex styles and sets frame. |
-| Restore | `borderless-win::manipulation::restore_original` | Uses captured style/ex-style/location/topmost. |
+| List targetable windows | `borderless-native::catalog` | Uses two-pass visible/style filtering. |
+| Apply borderless | `borderless-native::manipulation` | Removes standard/ex styles and sets frame. |
+| Restore | `borderless-native::manipulation::restore_original` | Uses captured style/ex-style/location/topmost. |
 | Favorites | `borderless-core::favorite`, `config` | Process, exact title, regex. |
-| Auto apply favorites | `borderless-reacter::watcher` | Poll interval honors slow detection. |
+| Auto apply favorites | `borderless-runtime::watcher` | Poll interval honors slow detection. |
 | Delay borderless | `FavoriteOptions::delay` and watcher | Engine-specific or per-favorite delay. |
 | Specific screen/rect | `TargetFrame` and `MonitorSnapshot` | Current monitor, specific monitor, exact rect. |
 | Offsets | `EdgeOffsets` | Left/top/right/bottom. |

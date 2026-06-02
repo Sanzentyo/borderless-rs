@@ -4,7 +4,7 @@ The core design avoids unsafe Rust except in the Win32 boundary crates.
 
 Allowed unsafe zones:
 
-- `crates/borderless-win/src/*`: calling Win32 APIs through `windows-rs`.
+- `crates/borderless-native/src/*`: calling Win32 APIs through `windows-rs`.
 - upstream `windows-reactor` internals: WinUI and Windows App SDK interop.
 
 `crates/borderless-gui` uses `#![forbid(unsafe_code)]`; it should remain view/model/runtime glue and should not call Win32 APIs directly.

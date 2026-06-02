@@ -1,8 +1,8 @@
 use crate::model::{GuiModel, StatusLine, favorite_from_window};
 use anyhow::Result;
 use borderless_core::{FavoriteOptions, Hwnd, WindowSnapshot};
-use borderless_reacter::{ControllerMsg, spawn_reacter};
-use borderless_win::WindowsBackend;
+use borderless_native::NativeBackend;
+use borderless_runtime::{ControllerMsg, spawn_runtime};
 use ractor::ActorRef;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -19,7 +19,7 @@ pub struct GuiRuntime {
 impl GuiRuntime {
     pub fn boot() -> Result<Self> {
         let inner = Arc::new(Runtime::new()?);
-        let handle = inner.block_on(spawn_reacter(WindowsBackend::new()))?;
+        let handle = inner.block_on(spawn_runtime(NativeBackend::new()))?;
         Ok(Self {
             inner,
             controller: handle.controller,

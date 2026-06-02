@@ -27,7 +27,7 @@ pub enum WatcherMsg {
 }
 
 #[derive(Debug, Clone)]
-pub enum ReacterEvent {
+pub enum RuntimeEvent {
     WindowsChanged(Vec<WindowSnapshot>),
     WindowApplied(Hwnd),
     WindowRestored(Hwnd),

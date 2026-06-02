@@ -10,15 +10,15 @@
 現行 `borderless-rs` は、次の基礎がすでに良い形で入っている。
 
 - `borderless-core`: Sans I/O domain、newtype、ADT、TypeState、trait boundary。
-- `borderless-win`: `windows-rs` による Win32 adapter。
-- `borderless-reacter`: `ractor` による controller / watcher actor。
+- `borderless-native`: `windows-rs` による native Win32 backend。
+- `borderless-runtime`: `ractor` による controller / watcher actor。
 - `borderless-cli` と `borderless-gui`: 同じ runtime actor を使う front-end。
 
 したがって、今後は **C# 版の WinForms UI をそのまま再現するのではなく、機能互換のまま Windows 11 Fluent 風の native GUI に再構成する** のがよい。
 
 実装方針は次の 2 段階にする。
 
-1. **Parity layer**: C# 版にある実用機能を Rust 側の domain / Win32 adapter / actor に足す。
+1. **Parity layer**: C# 版にある実用機能を Rust 側の domain / native backend / actor runtime に足す。
 2. **Modern GUI layer**: raw Win32 のまま ListBox/Button ベースを捨て、DWM Mica、Direct2D/DirectWrite owner-draw、NavigationView 風 shell、CommandBar 風 toolbar、card/list UI、tray integration に移行する。
 
 WinUI 3 / Windows App SDK を Rust から直接使う案は将来的には魅力があるが、現時点では build/deployment complexity が大きい。まずは `windows-rs` の Win32 / DWM / Direct2D / DirectWrite / Shell API で **unpackaged native app** として仕上げる。そのうえで、後から `winui` feature flag を生やせる構成にする。
@@ -30,8 +30,8 @@ WinUI 3 / Windows App SDK を Rust から直接使う案は将来的には魅力
 ```text
 crates/
   borderless-core/      # OS 非依存 domain
-  borderless-win/       # windows-rs adapter
-  borderless-reacter/   # actor/reacter control plane
+  borderless-native/       # windows-rs adapter
+  borderless-runtime/   # actor runtime control plane
   borderless-cli/       # CLI
   borderless-gui/       # GUI
 ```
@@ -40,7 +40,7 @@ crates/
 
 `borderless-core` は `#![forbid(unsafe_code)]` で、module も `action`, `backend`, `config`, `favorite`, `reducer`, `session`, `types`, `window` に分かれている。これは維持する。
 
-`borderless-win` は `catalog`, `manipulation`, `monitor`, `taskbar`, `cursor`, `audio`, `store` などに Win32 実装を閉じ込めている。これも維持し、追加機能もこの crate に閉じ込める。
+`borderless-native` は `catalog`, `manipulation`, `monitor`, `taskbar`, `cursor`, `audio`, `store` などに Win32 実装を閉じ込めている。これも維持し、追加機能もこの crate に閉じ込める。
 
 `borderless-gui` は現在、raw Win32 の `BUTTON`, `LISTBOX`, `STATIC` を使ったシンプルな 1 画面 UI である。機能確認用としては十分だが、最終 UI としては再設計する。
 
@@ -55,7 +55,7 @@ crates/
 
 | 領域 | C# 版機能 | Rust 現状 | 実装方針 |
 | --- | --- | --- | --- |
-| Window enumeration | visible/style による targetable window 検出 | Done | `borderless-win::catalog` を維持し、hidden process / full details filter を追加する。 |
+| Window enumeration | visible/style による targetable window 検出 | Done | `borderless-native::catalog` を維持し、hidden process / full details filter を追加する。 |
 | Apply borderless | style/ex-style 除去、position、maximize | Done | `WindowsManipulator::apply_plan` を維持し、DPI/monitor edge cases を追加検証する。 |
 | Restore | style/ex-style/location/topmost restore | Done | process exit 時の環境復旧とセットにする。 |
 | Favorites | process/title/regex、size、offset、topmost、taskbar/cursor、delay、mute | Partial | domain は大部分あり。GUI editor と update path を追加する。 |
@@ -98,7 +98,7 @@ crates/
       types.rs
       window.rs
 
-  borderless-win/
+  borderless-native/
     src/
       audio.rs           # CoreAudio 実装へ拡張
       catalog.rs
@@ -116,7 +116,7 @@ crates/
       title.rs           # new: SetWindowTextW
       tray.rs            # new: Shell_NotifyIconW
 
-  borderless-reacter/
+  borderless-runtime/
     src/
       controller.rs
       foreground.rs      # new: foreground/focus watcher
@@ -148,7 +148,7 @@ crates/
         icons.rs
 ```
 
-`borderless-core::ui` は Sans I/O にして、Win32 の HWND や paint code を持たない。GUI は `UiIntent -> UiModel -> UiEffect` の reducer とし、OS 操作は reacter に流す。
+`borderless-core::ui` は Sans I/O にして、Win32 の HWND や paint code を持たない。GUI は `UiIntent -> UiModel -> UiEffect` の reducer とし、OS 操作は runtime に流す。
 
 ## 5. Domain model 追加案
 
@@ -203,7 +203,7 @@ pub enum CursorPolicy {
 }
 ```
 
-Win32 adapter は `ShowCursor` の counter 問題を `CursorVisibilityGuard` で吸収し、mouse lock は `ClipCursor(Some(rect))` / `ClipCursor(None)` の RAII にする。
+Native backend は `ShowCursor` の counter 問題を `CursorVisibilityGuard` で吸収し、mouse lock は `ClipCursor(Some(rect))` / `ClipCursor(None)` の RAII にする。
 
 ### 5.3 Audio policy
 
@@ -246,7 +246,7 @@ pub struct EnvironmentLocks {
 }
 ```
 
-## 6. Reacter / actor topology
+## 6. Runtime / actor topology
 
 現在の topology は `ControllerActor` と `WatcherActor` が中心。機能互換には次の actor を追加する。
 
@@ -345,11 +345,11 @@ pub enum Unregistered {}
 
 close-to-tray / start-minimized は `LifecycleSettings` と連動する。
 
-## 7. Windows adapter 実装の具体策
+## 7. Native backend 実装の具体策
 
 ### 7.1 CoreAudio: mute-in-background
 
-`borderless-win::audio` を skeleton から実装へ変える。
+`borderless-native::audio` を skeleton から実装へ変える。
 
 必要な概念:
 
@@ -367,7 +367,7 @@ CoInitializeEx
 実装単位:
 
 ```text
-borderless-win/src/audio.rs
+borderless-native/src/audio.rs
   ComApartment
   AudioEndpoint
   AudioSession
@@ -389,7 +389,7 @@ C# 版は Startup folder shortcut を掃除し、Task Scheduler に `BorderlessG
 実装案:
 
 ```text
-borderless-win/src/startup.rs
+borderless-native/src/startup.rs
   StartupRegistration
   StartupTaskName(newtype)
   StartupArgs(newtype)
@@ -463,7 +463,7 @@ GUI では Settings の `View full process details` で切り替える。
 
 ### 7.7 Set window title
 
-`borderless-win::title::set_window_title(hwnd, title)` を追加する。
+`borderless-native::title::set_window_title(hwnd, title)` を追加する。
 
 - `WindowTitle` newtype を使う。
 - 空文字は許可するが GUI では warning を出す。
@@ -639,7 +639,7 @@ pub struct ThemeTokens {
 
 ### 8.5 Mica / DWM integration
 
-`borderless-win::dwm` を追加し、GUI window creation 後に呼ぶ。
+`borderless-native::dwm` を追加し、GUI window creation 後に呼ぶ。
 
 ```rust
 pub enum BackdropKind {
@@ -718,7 +718,7 @@ Unit test:
 
 ### Step 2: GuiBridgeActor
 
-`borderless-reacter::gui_bridge` を追加する。
+`borderless-runtime::gui_bridge` を追加する。
 
 - Controller/Watcher events を `AppSnapshot` に集約。
 - GUI は pull (`Snapshot`) と push (`Subscribe`) の両方を使えるようにする。
@@ -893,8 +893,8 @@ borderless-gui --safe-mode
 - Current feature list: `README.md`, `FEATURE_MATRIX.md`
 - Current architecture: `ARCHITECTURE.md`
 - Current GUI prototype: `crates/borderless-gui/src/gui.rs`
-- Current Win32 manipulation: `crates/borderless-win/src/manipulation.rs`
-- Current audio skeleton: `crates/borderless-win/src/audio.rs`
+- Current Win32 manipulation: `crates/borderless-native/src/manipulation.rs`
+- Current audio skeleton: `crates/borderless-native/src/audio.rs`
 
 ### Borderless-Gaming C# references
 
@@ -920,4 +920,4 @@ borderless-gui --safe-mode
 - C# 版の広告表示や Steam promotion は移植しない。
 - GPL コードの移植・複写はしない。挙動を仕様として参照し、Rust 側では独立実装する。
 - UI を WebView / Electron / React Native にしない。Windows-only native app として進める。
-- `unsafe` を core / reacter / CLI / GUI model に漏らさない。`unsafe` は `borderless-win` と低レベル GUI window/painter に閉じ込め、関数単位で安全な wrapper を用意する。
+- `unsafe` を core / runtime / CLI / GUI model に漏らさない。`unsafe` は `borderless-native` と低レベル GUI window/painter に閉じ込め、関数単位で安全な wrapper を用意する。

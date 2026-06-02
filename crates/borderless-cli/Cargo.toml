@@ -8,8 +8,8 @@ license.workspace = true
 [dependencies]
 anyhow.workspace = true
 borderless-core.workspace = true
-borderless-reacter.workspace = true
-borderless-win.workspace = true
+borderless-runtime.workspace = true
+borderless-native.workspace = true
 clap.workspace = true
 ractor.workspace = true
 tokio.workspace = true

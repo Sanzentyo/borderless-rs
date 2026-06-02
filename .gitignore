@@ -1,0 +1,6 @@
+/target
+**/*.pdb
+**/*.exe
+**/*.ilk
+*.log
+.DS_Store

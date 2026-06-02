@@ -1,0 +1,30 @@
+slow_window_detection = false
+poll_interval_ms = 3000
+
+[[favorites]]
+id = "game-by-process"
+enabled = true
+matcher = { kind = "process_name", value = "Game.exe" }
+size = { kind = "full_screen" }
+should_maximize = true
+top_most = false
+remove_menus = false
+hide_windows_taskbar = true
+hide_mouse_cursor = false
+delay_ms = 0
+mute_in_background = false
+offsets = { left = 0, top = 0, right = 0, bottom = 0 }
+
+[[favorites]]
+id = "unity-title-regex"
+enabled = true
+matcher = { kind = "title_regex", value = "^My Game" }
+size = { kind = "full_screen" }
+should_maximize = false
+top_most = true
+remove_menus = false
+hide_windows_taskbar = false
+hide_mouse_cursor = false
+delay_ms = 4000
+mute_in_background = false
+offsets = { left = 0, top = 0, right = 0, bottom = 0 }

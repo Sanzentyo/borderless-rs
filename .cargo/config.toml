@@ -1,0 +1,7 @@
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[alias]
+check-win = "check --workspace --target x86_64-pc-windows-msvc"
+clippy-win = "clippy --workspace --all-targets --target x86_64-pc-windows-msvc -- -D warnings"
+fmt-all = "fmt --all"

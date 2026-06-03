@@ -1,4 +1,4 @@
-use crate::types::{Hwnd, MonitorId, Pid, ProcessName, Rect, WindowTitle};
+use crate::types::{Hwnd, MonitorId, PhysicalRect, Pid, ProcessName, WindowTitle};
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 
@@ -37,9 +37,9 @@ pub struct WindowSnapshot {
     pub process_name: ProcessName,
     pub title: WindowTitle,
     pub class_name: String,
-    pub rect: Rect,
+    pub rect: PhysicalRect,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub client_rect: Option<Rect>,
+    pub client_rect: Option<PhysicalRect>,
     pub style: StyleBits,
     pub ex_style: ExStyleBits,
     pub is_visible: bool,
@@ -77,8 +77,8 @@ impl WindowSnapshot {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MonitorSnapshot {
     pub id: MonitorId,
-    pub rect: Rect,
-    pub work_area: Rect,
+    pub rect: PhysicalRect,
+    pub work_area: PhysicalRect,
     pub primary: bool,
 }
 
@@ -99,9 +99,9 @@ pub struct OriginalWindowState {
     pub hwnd: Hwnd,
     pub style: StyleBits,
     pub ex_style: ExStyleBits,
-    pub rect: Rect,
+    pub rect: PhysicalRect,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub client_rect: Option<Rect>,
+    pub client_rect: Option<PhysicalRect>,
     pub topmost: bool,
 }
 
@@ -121,6 +121,7 @@ impl From<&WindowSnapshot> for OriginalWindowState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Rect;
 
     fn snapshot(style: StyleBits) -> WindowSnapshot {
         WindowSnapshot {

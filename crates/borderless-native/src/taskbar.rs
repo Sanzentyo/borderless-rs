@@ -1,5 +1,5 @@
 use crate::ffi;
-use borderless_core::Rect;
+use borderless_core::PhysicalRect;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::WindowsAndMessaging::{
     FindWindowExW, FindWindowW, GetWindowRect, ShowWindow,
@@ -11,7 +11,7 @@ pub(crate) fn set_visible(visible: bool) {
     show_all_secondary_taskbars(cmd);
 }
 
-pub(crate) fn set_visible_for_rect(visible: bool, target: Rect) {
+pub(crate) fn set_visible_for_rect(visible: bool, target: PhysicalRect) {
     let cmd = if visible { ffi::SW_SHOW } else { ffi::SW_HIDE };
     let taskbars = taskbar_windows();
     let mut changed = false;
@@ -79,13 +79,13 @@ fn show_window(hwnd: HWND, cmd: i32) {
     }
 }
 
-fn window_rect(hwnd: HWND) -> Option<Rect> {
+fn window_rect(hwnd: HWND) -> Option<PhysicalRect> {
     let mut raw = windows::Win32::Foundation::RECT::default();
     unsafe { GetWindowRect(hwnd, &raw mut raw) }.ok()?;
     ffi::rect(raw).ok()
 }
 
-fn intersects(left: Rect, right: Rect) -> bool {
+fn intersects(left: PhysicalRect, right: PhysicalRect) -> bool {
     left.left.0 < right.right.0
         && left.right.0 > right.left.0
         && left.top.0 < right.bottom.0

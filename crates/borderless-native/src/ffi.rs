@@ -1,4 +1,6 @@
-use borderless_core::{ExStyleBits, Hwnd, MonitorId, Pid, Pixels, ProcessName, Rect, StyleBits};
+use borderless_core::{
+    ExStyleBits, Hwnd, MonitorId, PhysicalPx, PhysicalRect, Pid, ProcessName, StyleBits,
+};
 use std::ffi::OsString;
 use std::os::windows::ffi::OsStringExt;
 use windows::Win32::Foundation::{HWND, LPARAM, RECT};
@@ -28,8 +30,8 @@ pub(crate) fn from_hwnd(value: HWND) -> Hwnd {
     Hwnd(value.0 as isize)
 }
 
-pub(crate) fn rect(value: RECT) -> borderless_core::CoreResult<Rect> {
-    Rect::new(value.left, value.top, value.right, value.bottom)
+pub(crate) fn rect(value: RECT) -> borderless_core::CoreResult<PhysicalRect> {
+    PhysicalRect::new(value.left, value.top, value.right, value.bottom)
 }
 
 pub(crate) fn style(value: i32) -> StyleBits {
@@ -84,8 +86,8 @@ pub(crate) const fn lparam(value: isize) -> LPARAM {
 }
 
 #[allow(dead_code)]
-pub(crate) const fn pixels(value: i32) -> Pixels {
-    Pixels(value)
+pub(crate) const fn pixels(value: i32) -> PhysicalPx {
+    PhysicalPx(value)
 }
 
 #[allow(dead_code)]

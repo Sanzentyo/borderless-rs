@@ -18,5 +18,8 @@ pub use error::{CoreError, CoreResult};
 pub use favorite::{Favorite, FavoriteMatcher, FavoriteOptions, FavoriteSize};
 pub use reducer::{AppModel, Effect, Intent};
 pub use session::{Applied, BorderlessSession, Observed, Prepared, Restored};
-pub use types::{FavoriteId, Hwnd, MonitorId, Pid, Pixels, ProcessName, Rect, WindowTitle};
+pub use types::{
+    Dip, DipRect, FavoriteId, Hwnd, MonitorId, PhysicalPx, PhysicalRect, Pid, Pixels, ProcessName,
+    Rect, ScaleFactor, WindowTitle,
+};
 pub use window::{ExStyleBits, MonitorSnapshot, OriginalWindowState, StyleBits, WindowSnapshot};

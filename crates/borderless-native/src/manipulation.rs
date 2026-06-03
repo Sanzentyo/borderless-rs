@@ -1,6 +1,7 @@
 use crate::{audio::AudioSessions, cursor::CursorVisibility, ffi, taskbar};
 use borderless_core::{
-    BorderlessPlan, CoreResult, Hwnd, MenuPolicy, OriginalWindowState, Pid, Rect, WindowManipulator,
+    BorderlessPlan, CoreResult, Hwnd, MenuPolicy, OriginalWindowState, PhysicalRect, Pid,
+    WindowManipulator,
 };
 use windows::Win32::Foundation::RECT;
 use windows::Win32::UI::HiDpi::{
@@ -170,7 +171,7 @@ fn restore(original: &OriginalWindowState) -> CoreResult<()> {
     .map_err(|_| borderless_core::CoreError::Transition("restore z-order failed"))
 }
 
-fn client_rect(hwnd: windows::Win32::Foundation::HWND) -> CoreResult<Rect> {
+fn client_rect(hwnd: windows::Win32::Foundation::HWND) -> CoreResult<PhysicalRect> {
     let mut raw = RECT::default();
     unsafe { GetClientRect(hwnd, &raw mut raw) }
         .map_err(|_| borderless_core::CoreError::Transition("GetClientRect failed"))?;

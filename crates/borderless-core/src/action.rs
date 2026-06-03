@@ -1,23 +1,23 @@
-use crate::types::{MonitorId, Pixels, Rect};
+use crate::types::{MonitorId, PhysicalPx, PhysicalRect};
 use crate::window::{ExStyleBits, OriginalWindowState, StyleBits};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EdgeOffsets {
-    pub left: Pixels,
-    pub top: Pixels,
-    pub right: Pixels,
-    pub bottom: Pixels,
+    pub left: PhysicalPx,
+    pub top: PhysicalPx,
+    pub right: PhysicalPx,
+    pub bottom: PhysicalPx,
 }
 
 impl EdgeOffsets {
     #[must_use]
     pub const fn zero() -> Self {
         Self {
-            left: Pixels(0),
-            top: Pixels(0),
-            right: Pixels(0),
-            bottom: Pixels(0),
+            left: PhysicalPx(0),
+            top: PhysicalPx(0),
+            right: PhysicalPx(0),
+            bottom: PhysicalPx(0),
         }
     }
 }
@@ -28,7 +28,7 @@ pub enum TargetFrame {
     CurrentMonitor,
     PrimaryMonitor,
     Monitor(MonitorId),
-    Exact(Rect),
+    Exact(PhysicalRect),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -39,7 +39,7 @@ pub enum MenuPolicy {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Placement {
-    pub rect: Rect,
+    pub rect: PhysicalRect,
     pub topmost: bool,
     pub maximize: bool,
 }

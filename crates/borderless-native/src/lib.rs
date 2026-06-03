@@ -15,7 +15,7 @@ pub use audio::AudioSessions;
 pub use catalog::WindowsCatalog;
 pub use clipboard::Clipboard;
 pub use cursor::CursorVisibility;
-pub use dpi::enable_per_monitor_awareness;
+pub use dpi::{enable_per_monitor_awareness, window_scale_factor};
 pub use manipulation::WindowsManipulator;
 pub use store::TomlSettingsStore;
 pub use visuals::{WindowVisualAssets, WindowVisuals};

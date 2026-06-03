@@ -153,11 +153,19 @@ Dedicated black-band overlay windows are not implemented yet; currently the unus
 
 ## DPI and scaled input
 
-`windows-reactor` requests `DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2` when the GUI app starts rendering. `borderless-cli` requests the same awareness at process startup before using the native Win32 backend. This keeps `GetWindowRect`, monitor rectangles, and `SetWindowPos` in the same physical coordinate space as the target game window. Without this, Windows DPI virtualization can make the aspect-fit rectangle look visually plausible while mouse input lands at scaled or offset coordinates inside the game.
+`borderless-cli` explicitly requests `DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2` at process startup before using the native Win32 backend. `borderless-gui` runs through the WinAppSDK/Reactor bootstrap, so it does not call `SetProcessDpiAwarenessContext` manually before `App::new()`; doing that can make WinAppSDK startup fail with `0x80070005`. This keeps the native command path explicit while letting the packaged GUI declare DPI awareness through the app bootstrap.
 
 Native apply/restore temporarily switches the calling thread to the target HWND's own DPI awareness context before changing styles or calling `SetWindowPos`. This avoids cross-process DPI virtualization where the Borderless Oxide UI is per-monitor aware but the game is system-DPI aware or DPI unaware.
 
 The native backend must not use a global low-level mouse hook to fix scaled input. A prototype used `WH_MOUSE_LL`, suppressed the original event, transformed coordinates, and posted `WM_MOUSE*` messages back to the target. That is the wrong layer for games: it can make the mouse feel frozen, and it still does not help programs that read `GetCursorPos`, DirectInput, or RawInput instead of window messages.
+
+The current policy follows the same broad boundary as Borderless-Gaming: remove border/caption styles, pass the chosen physical rectangle directly to `SetWindowPos`, and let Windows plus the target process handle its own input. Borderless Oxide makes the coordinate boundary explicit in `borderless-core`:
+
+- `PhysicalPx` / `PhysicalRect`: Win32, monitor, window manipulation, mouse lock, and future overlay-selection coordinates.
+- `Dip` / `DipRect`: WinUI/Reactor layout coordinates.
+- `ScaleFactor`: conversion boundary, normally derived from a target HWND via `borderless_native::window_scale_factor`.
+
+`Pixels` and `Rect` remain compatibility re-exports of `PhysicalPx` and `PhysicalRect`; new code should prefer the physical names when crossing into native window manipulation.
 
 Existing borderless-window style libraries generally solve a different problem: they control their own window procedure, extend the client area, and handle non-client messages such as `WM_NCCALCSIZE` and `WM_NCHITTEST`. Borderless Oxide manipulates another process's HWND from outside, so it cannot safely use that same technique unless it owns, subclasses, or injects code into the target process.
 

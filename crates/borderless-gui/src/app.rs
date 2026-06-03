@@ -22,7 +22,12 @@ const DETAILS_PANE_WIDTH: f64 = 300.0;
 const SECTION_SPACING: f64 = 16.0;
 const TEXT_SPACING: f64 = 6.0;
 const ACTION_SPACING: f64 = 10.0;
-const NAV_PANE_EXPANDED_WIDTH: f64 = 1400.0;
+const NAV_EXPANDED_PANE_WIDTH: f64 = 480.0;
+const PAGE_TITLE_FONT_SIZE: f64 = 24.0;
+const SECTION_TITLE_FONT_SIZE: f64 = 18.0;
+const BODY_FONT_SIZE: f64 = 13.0;
+const BODY_STRONG_FONT_SIZE: f64 = 13.0;
+const CAPTION_FONT_SIZE: f64 = 12.0;
 
 pub fn run() -> Result<()> {
     let _span = ProfileSpan::start("gui.run");
@@ -65,14 +70,14 @@ fn render_root(
         Page::Logs => logs_page(&model, text),
     };
 
-    let nav_mode = nav_display_mode(inner_width);
+    let nav_layout = NavLayout::for_page(model.page(), inner_width);
     let nav_view = NavigationView::new(nav_items(text), content)
-        .with_key(nav_key(nav_mode))
+        .with_key(nav_key(nav_layout.pane_display_mode))
         .pane_title(text.app_title)
         .selected_tag(model.page().tag())
-        .pane_display_mode(nav_mode);
-    let nav_view = if inner_width >= NAV_PANE_EXPANDED_WIDTH {
-        nav_view.pane_open(true)
+        .pane_display_mode(nav_layout.pane_display_mode);
+    let nav_view = if nav_layout.pane_open {
+        nav_view.pane_open(nav_layout.pane_open)
     } else {
         nav_view
     };
@@ -100,11 +105,49 @@ fn render_root(
         .into()
 }
 
-fn nav_display_mode(width: f64) -> NavViewPaneDisplayMode {
-    if width >= NAV_PANE_EXPANDED_WIDTH {
-        NavViewPaneDisplayMode::Left
-    } else {
-        NavViewPaneDisplayMode::LeftCompact
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct NavLayout {
+    pane_open: bool,
+    pane_display_mode: NavViewPaneDisplayMode,
+}
+
+impl NavLayout {
+    fn for_page(page: Page, inner_width: f64) -> Self {
+        if LayoutMetrics::for_page(page).expanded_navigation_fits(inner_width) {
+            Self {
+                pane_open: true,
+                pane_display_mode: NavViewPaneDisplayMode::Left,
+            }
+        } else {
+            Self {
+                pane_open: false,
+                pane_display_mode: NavViewPaneDisplayMode::LeftCompact,
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct LayoutMetrics {
+    content_min_width: f64,
+}
+
+impl LayoutMetrics {
+    fn for_page(page: Page) -> Self {
+        let content_min_width = match page {
+            Page::Windows => {
+                PAGE_PADDING.mul_add(2.0, LIST_PANE_WIDTH + SECTION_SPACING + DETAILS_PANE_WIDTH)
+            }
+            Page::Favorites | Page::Settings | Page::Logs => {
+                PAGE_PADDING.mul_add(2.0, LIST_PANE_WIDTH)
+            }
+        };
+
+        Self { content_min_width }
+    }
+
+    fn expanded_navigation_fits(self, inner_width: f64) -> bool {
+        inner_width >= self.content_min_width + NAV_EXPANDED_PANE_WIDTH
     }
 }
 
@@ -143,7 +186,26 @@ fn nav_items(text: Text) -> Vec<NavViewItem> {
 }
 
 fn page_title(label: &'static str) -> Element {
-    title(label).margin(Thickness::xy(PAGE_PADDING, 0.0)).into()
+    title(label)
+        .font_size(PAGE_TITLE_FONT_SIZE)
+        .margin(Thickness::xy(PAGE_PADDING, 0.0))
+        .into()
+}
+
+fn section_title(label: impl Into<String>) -> Element {
+    subtitle(label).font_size(SECTION_TITLE_FONT_SIZE).into()
+}
+
+fn strong_text(label: impl Into<String>) -> windows_reactor::TextBlock {
+    body_strong(label).font_size(BODY_STRONG_FONT_SIZE)
+}
+
+fn body_text(label: impl Into<String>) -> windows_reactor::TextBlock {
+    body(label).font_size(BODY_FONT_SIZE)
+}
+
+fn meta_text(label: impl Into<String>) -> windows_reactor::TextBlock {
+    caption(label).font_size(CAPTION_FONT_SIZE)
 }
 
 fn windows_page(
@@ -237,8 +299,8 @@ fn window_card(
     surface(
         vstack((
             vstack((
-                body_strong(title).wrap(),
-                caption(if selected {
+                strong_text(title).wrap(),
+                meta_text(if selected {
                     text.selected
                 } else {
                     text.targetable
@@ -246,13 +308,13 @@ fn window_card(
             ))
             .spacing(TEXT_SPACING),
             vstack((
-                caption(format!("{}: {}", text.process, process_name)).wrap(),
-                caption(format!(
+                meta_text(format!("{}: {}", text.process, process_name)).wrap(),
+                meta_text(format!(
                     "{}: {}    {}: {}",
                     text.pid, window.pid, text.hwnd, window.hwnd
                 ))
                 .wrap(),
-                caption(format!(
+                meta_text(format!(
                     "{}: {}    {}: {}x{}",
                     text.class,
                     class_name,
@@ -327,22 +389,22 @@ fn detail_panel(
 
             surface(
                 vstack((
-                    subtitle(text.details),
-                    body_strong(title).wrap(),
+                    section_title(text.details),
+                    strong_text(title).wrap(),
                     vstack((
-                        caption(format!("{}: {}", text.process, process_name)).wrap(),
-                        caption(format!("{}: {}", text.pid, window.pid)).wrap(),
-                        caption(format!("{}: {}", text.hwnd, window.hwnd)).wrap(),
+                        meta_text(format!("{}: {}", text.process, process_name)).wrap(),
+                        meta_text(format!("{}: {}", text.pid, window.pid)).wrap(),
+                        meta_text(format!("{}: {}", text.hwnd, window.hwnd)).wrap(),
                     ))
                     .spacing(TEXT_SPACING),
                     vstack((
-                        caption(format!("{}: {}", text.class, class_name)).wrap(),
-                        caption(format!(
+                        meta_text(format!("{}: {}", text.class, class_name)).wrap(),
+                        meta_text(format!(
                             "{}: left={} top={}",
                             text.rect, window.rect.left.0, window.rect.top.0
                         ))
                         .wrap(),
-                        caption(format!(
+                        meta_text(format!(
                             "right={} bottom={}",
                             window.rect.right.0, window.rect.bottom.0
                         ))
@@ -515,7 +577,7 @@ fn favorites_page(
             .into()
     });
 
-    let mut children = vec![body(text.favorites_message).wrap().into()];
+    let mut children = vec![body_text(text.favorites_message).wrap().into()];
     children.push(
         add_selected.unwrap_or_else(|| {
             empty_state(text.no_selected_window, text.no_selected_window_message)
@@ -543,10 +605,10 @@ fn settings_page(
 ) -> Element {
     vstack((
         page_title(text.nav_settings),
-        body(text.settings_intro).wrap(),
+        body_text(text.settings_intro).wrap(),
         surface(
             vstack((
-                subtitle(text.environment_controls),
+                section_title(text.environment_controls),
                 hstack((
                     button(text.show_taskbar).on_click({
                         let runtime = runtime.clone();
@@ -631,12 +693,12 @@ fn logs_page(model: &GuiModel, text: Text) -> Element {
         .iter()
         .rev()
         .take(80)
-        .map(|line| caption(line).wrap().into())
+        .map(|line| meta_text(line).wrap().into())
         .collect::<Vec<Element>>();
 
     grid((
         page_title(text.nav_logs).grid_row(0),
-        body(text.logs_intro).wrap().grid_row(1),
+        body_text(text.logs_intro).wrap().grid_row(1),
         scroll_viewer(vstack(rows).spacing(4.0)).grid_row(2),
     ))
     .rows([GridLength::Auto, GridLength::Auto, GridLength::Star(1.0)])
@@ -715,7 +777,7 @@ fn status_bar(model: &GuiModel, set_model: &AsyncSetState<GuiModel>) -> Element 
 
 fn empty_state(title_text: impl Into<String>, message: impl Into<String>) -> Element {
     surface(
-        vstack((subtitle(title_text), body(message).wrap())).spacing(10.0),
+        vstack((section_title(title_text), body_text(message).wrap())).spacing(10.0),
         false,
         PANEL_PADDING,
     )

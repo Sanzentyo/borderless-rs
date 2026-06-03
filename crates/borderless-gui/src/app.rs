@@ -22,8 +22,7 @@ const DETAILS_PANE_WIDTH: f64 = 300.0;
 const SECTION_SPACING: f64 = 16.0;
 const TEXT_SPACING: f64 = 6.0;
 const ACTION_SPACING: f64 = 10.0;
-const NAV_PANE_EXPANDED_WIDTH: f64 = 1500.0;
-const NAV_PANE_MINIMAL_WIDTH: f64 = 1200.0;
+const NAV_PANE_EXPANDED_WIDTH: f64 = 1400.0;
 
 pub fn run() -> Result<()> {
     let _span = ProfileSpan::start("gui.run");
@@ -58,7 +57,7 @@ fn render_root(
 ) -> Element {
     set_requested_theme(RequestedTheme::Default);
     let (model, set_model) = cx.use_async_state(initial_model);
-    let nav_layout = NavLayout::for_width(cx.use_inner_size().width, &model);
+    let inner_width = cx.use_inner_size().width;
     let content = match model.page() {
         Page::Windows => windows_page(runtime, &model, &set_model, text),
         Page::Favorites => favorites_page(runtime, &model, &set_model, text),
@@ -66,11 +65,18 @@ fn render_root(
         Page::Logs => logs_page(&model, text),
     };
 
-    let nav_view = NavigationView::new(nav_items(text, nav_layout.labels_visible), content)
+    let nav_mode = nav_display_mode(inner_width);
+    let nav_view = NavigationView::new(nav_items(text), content)
+        .with_key(nav_key(nav_mode))
         .pane_title(text.app_title)
         .selected_tag(model.page().tag())
-        .pane_open(nav_layout.pane_open)
-        .pane_display_mode(nav_layout.pane_display_mode)
+        .pane_display_mode(nav_mode);
+    let nav_view = if inner_width >= NAV_PANE_EXPANDED_WIDTH {
+        nav_view.pane_open(true)
+    } else {
+        nav_view
+    };
+    let nav_view = nav_view
         .settings_visible(false)
         .auto_suggest_placeholder(text.search_windows)
         .on_search_text_changed({
@@ -79,105 +85,61 @@ fn render_root(
             move |query| set_model.call(model.clone().with_query(SearchQuery::new(query)))
         })
         .on_selection_changed({
-            let set_model = set_model.clone();
-            let model = model.clone();
             move |tag: String| {
                 if let Some(page) = Page::from_tag(&tag) {
                     set_model.call(model.clone().with_page(page));
                 }
             }
         })
-        .pane_toggle_button_visible(false)
+        .pane_toggle_button_visible(true)
         .back_button_visible(false);
 
-    grid((
-        app_title_bar(text, &model, &set_model, nav_layout.toggle_visible).grid_row(0),
-        nav_view.grid_row(1),
-    ))
-    .rows([GridLength::Auto, GridLength::Star(1.0)])
-    .columns([GridLength::Star(1.0)])
-    .into()
+    grid((app_title_bar(text).grid_row(0), nav_view.grid_row(1)))
+        .rows([GridLength::Auto, GridLength::Star(1.0)])
+        .columns([GridLength::Star(1.0)])
+        .into()
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct NavLayout {
-    pane_open: bool,
-    pane_display_mode: NavViewPaneDisplayMode,
-    toggle_visible: bool,
-    labels_visible: bool,
-}
-
-impl NavLayout {
-    fn for_width(width: f64, model: &GuiModel) -> Self {
-        if width >= NAV_PANE_EXPANDED_WIDTH {
-            Self {
-                pane_open: true,
-                pane_display_mode: NavViewPaneDisplayMode::Left,
-                toggle_visible: false,
-                labels_visible: true,
-            }
-        } else if width <= NAV_PANE_MINIMAL_WIDTH {
-            Self {
-                pane_open: false,
-                pane_display_mode: NavViewPaneDisplayMode::LeftMinimal,
-                toggle_visible: true,
-                labels_visible: false,
-            }
-        } else {
-            let pane_open = model.nav_pane_open();
-            Self {
-                pane_open,
-                pane_display_mode: if pane_open {
-                    NavViewPaneDisplayMode::Left
-                } else {
-                    NavViewPaneDisplayMode::LeftMinimal
-                },
-                toggle_visible: true,
-                labels_visible: pane_open,
-            }
-        }
+fn nav_display_mode(width: f64) -> NavViewPaneDisplayMode {
+    if width >= NAV_PANE_EXPANDED_WIDTH {
+        NavViewPaneDisplayMode::Left
+    } else {
+        NavViewPaneDisplayMode::LeftCompact
     }
 }
 
-fn app_title_bar(
-    text: Text,
-    model: &GuiModel,
-    set_model: &AsyncSetState<GuiModel>,
-    pane_toggle_visible: bool,
-) -> Element {
+const fn nav_key(mode: NavViewPaneDisplayMode) -> &'static str {
+    match mode {
+        NavViewPaneDisplayMode::Left => "nav-left",
+        NavViewPaneDisplayMode::LeftCompact => "nav-left-compact",
+        NavViewPaneDisplayMode::Auto => "nav-auto",
+        NavViewPaneDisplayMode::Top => "nav-top",
+        NavViewPaneDisplayMode::LeftMinimal => "nav-left-minimal",
+    }
+}
+
+fn app_title_bar(text: Text) -> Element {
     TitleBar::new(text.app_title)
-        .pane_toggle_button_visible(pane_toggle_visible)
-        .on_pane_toggle_requested({
-            let set_model = set_model.clone();
-            let model = model.clone();
-            move || {
-                let next = model.nav_pane().toggled();
-                set_model.call(model.clone().with_nav_pane(next));
-            }
-        })
+        .pane_toggle_button_visible(false)
         .tall(false)
         .into()
 }
 
-fn nav_items(text: Text, labels_visible: bool) -> Vec<NavViewItem> {
+fn nav_items(text: Text) -> Vec<NavViewItem> {
     vec![
-        NavViewItem::new(nav_label(text.nav_windows, labels_visible))
+        NavViewItem::new(text.nav_windows)
             .tag(Page::WINDOWS_TAG)
             .icon(SymbolGlyph::World),
-        NavViewItem::new(nav_label(text.nav_favorites, labels_visible))
+        NavViewItem::new(text.nav_favorites)
             .tag(Page::FAVORITES_TAG)
             .icon(SymbolGlyph::Favorite),
-        NavViewItem::new(nav_label(text.nav_settings, labels_visible))
+        NavViewItem::new(text.nav_settings)
             .tag(Page::SETTINGS_TAG)
             .icon(SymbolGlyph::Setting),
-        NavViewItem::new(nav_label(text.nav_logs, labels_visible))
+        NavViewItem::new(text.nav_logs)
             .tag(Page::LOGS_TAG)
             .icon(SymbolGlyph::Flag),
     ]
-}
-
-const fn nav_label(label: &'static str, labels_visible: bool) -> &'static str {
-    if labels_visible { label } else { "" }
 }
 
 fn page_title(label: &'static str) -> Element {

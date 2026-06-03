@@ -2,6 +2,7 @@ use crate::{ffi, monitor, process};
 use borderless_core::profile::ProfileSpan;
 use borderless_core::{CoreResult, Pid, ProcessName, WindowCatalog, WindowSnapshot, WindowTitle};
 use std::cell::RefCell;
+use std::time::Instant;
 use windows::Win32::Foundation::{HWND, LPARAM, RECT};
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GetClassNameW, GetClientRect, GetWindowLongW, GetWindowRect, GetWindowTextLengthW,
@@ -93,6 +94,7 @@ fn enumerate_windows() -> Vec<WindowSnapshot> {
 }
 
 fn snapshot_from_hwnd(hwnd: HWND, process_names: &[(Pid, ProcessName)]) -> Option<WindowSnapshot> {
+    let start = Instant::now();
     let mut raw_rect = RECT::default();
     unsafe { GetWindowRect(hwnd, &raw mut raw_rect) }.ok()?;
     let rect = ffi::rect(raw_rect).ok()?;
@@ -103,6 +105,9 @@ fn snapshot_from_hwnd(hwnd: HWND, process_names: &[(Pid, ProcessName)]) -> Optio
     let mut pid = 0;
     unsafe { GetWindowThreadProcessId(hwnd, Some(&raw mut pid)) };
     let pid = Pid::new(pid)?;
+    if pid.get() == std::process::id() {
+        return None;
+    }
     let process_name = process_names
         .iter()
         .find_map(|(candidate_pid, name)| (pid == *candidate_pid).then(|| name.clone()))
@@ -115,7 +120,7 @@ fn snapshot_from_hwnd(hwnd: HWND, process_names: &[(Pid, ProcessName)]) -> Optio
     let title = window_text(hwnd);
     let class_name = class_name(hwnd);
 
-    Some(WindowSnapshot {
+    let snapshot = WindowSnapshot {
         hwnd: ffi::from_hwnd(hwnd),
         pid,
         process_name,
@@ -126,7 +131,15 @@ fn snapshot_from_hwnd(hwnd: HWND, process_names: &[(Pid, ProcessName)]) -> Optio
         style: ffi::style(style),
         ex_style: ffi::ex_style(ex_style),
         is_visible: unsafe { IsWindowVisible(hwnd).as_bool() },
-    })
+    };
+    let elapsed = start.elapsed();
+    if elapsed.as_millis() >= 25 {
+        ProfileSpan::mark(format!(
+            "native.snapshot_from_hwnd: slow hwnd={} pid={} class={} title={} elapsed={elapsed:?}",
+            snapshot.hwnd, snapshot.pid, snapshot.class_name, snapshot.title
+        ));
+    }
+    Some(snapshot)
 }
 
 fn client_rect(hwnd: HWND) -> Option<borderless_core::Rect> {

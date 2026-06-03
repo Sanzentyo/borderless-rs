@@ -1,4 +1,5 @@
 use crate::messages::{ControllerMsg, WatcherMsg};
+use borderless_core::profile::ProfileSpan;
 use borderless_core::{AppConfig, SettingsStore, WindowCatalog};
 use ractor::{Actor, ActorProcessingErr, ActorRef, call};
 use std::sync::Arc;
@@ -72,6 +73,7 @@ where
     B: WindowCatalog + SettingsStore,
 {
     async fn tick(&self, state: &WatcherState) {
+        let _span = ProfileSpan::start("runtime.watcher.tick");
         let Ok(windows) = self.backend.windows() else {
             return;
         };
@@ -85,8 +87,8 @@ where
             if !favorite.options.delay.is_zero() {
                 tokio::time::sleep(favorite.options.delay).await;
             }
-            let _ = call!(self.controller, |reply| ControllerMsg::ApplyByHwnd(
-                window.hwnd,
+            let _ = call!(self.controller, |reply| ControllerMsg::ApplyWindow(
+                window.clone(),
                 reply
             ));
         }

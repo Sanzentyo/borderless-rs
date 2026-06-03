@@ -36,31 +36,6 @@ impl GuiRuntime {
             .store(reset, Ordering::Relaxed);
     }
 
-    pub fn initial_model(&self) -> GuiModel {
-        let _span = ProfileSpan::start("gui.runtime.initial_model");
-        let controller = self.controller.clone();
-        let (windows, monitors) = self.inner.block_on(async move {
-            let windows = ractor::call!(controller.clone(), ControllerMsg::ListWindows);
-            ProfileSpan::mark("gui.runtime.initial_model: ListWindows returned");
-            let monitors = ractor::call!(controller, ControllerMsg::ListMonitors);
-            ProfileSpan::mark("gui.runtime.initial_model: ListMonitors returned");
-            (windows, monitors)
-        });
-
-        let model = match monitors {
-            Ok(monitors) => GuiModel::default().with_monitors(monitors),
-            Err(err) => GuiModel::default()
-                .with_status(StatusLine::error("Monitor refresh failed", err.to_string())),
-        };
-
-        match windows {
-            Ok(windows) => on_windows_refreshed(model, windows),
-            Err(err) => {
-                model.with_status(StatusLine::error("Initial refresh failed", err.to_string()))
-            }
-        }
-    }
-
     pub fn refresh_windows(&self, set_model: AsyncSetState<GuiModel>, model: GuiModel) {
         let controller = self.controller.clone();
         self.inner.spawn(async move {

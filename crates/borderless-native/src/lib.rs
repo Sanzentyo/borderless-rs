@@ -44,6 +44,34 @@ impl borderless_core::WindowCatalog for NativeBackend {
     fn monitors(&self) -> CoreResult<Vec<borderless_core::MonitorSnapshot>> {
         borderless_core::WindowCatalog::monitors(&self.catalog)
     }
+
+    fn by_hwnd(
+        &self,
+        hwnd: borderless_core::Hwnd,
+    ) -> CoreResult<Option<borderless_core::WindowSnapshot>> {
+        borderless_core::WindowCatalog::by_hwnd(&self.catalog, hwnd)
+    }
+
+    fn by_pid(
+        &self,
+        pid: borderless_core::Pid,
+    ) -> CoreResult<Option<borderless_core::WindowSnapshot>> {
+        borderless_core::WindowCatalog::by_pid(&self.catalog, pid)
+    }
+
+    fn by_process_name(
+        &self,
+        name: &borderless_core::ProcessName,
+    ) -> CoreResult<Option<borderless_core::WindowSnapshot>> {
+        borderless_core::WindowCatalog::by_process_name(&self.catalog, name)
+    }
+
+    fn by_title(
+        &self,
+        title: &borderless_core::WindowTitle,
+    ) -> CoreResult<Option<borderless_core::WindowSnapshot>> {
+        borderless_core::WindowCatalog::by_title(&self.catalog, title)
+    }
 }
 
 impl borderless_core::WindowManipulator for NativeBackend {

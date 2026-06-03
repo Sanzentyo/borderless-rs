@@ -7,6 +7,7 @@ use ractor::RpcReplyPort;
 pub enum ControllerMsg {
     ListWindows(RpcReplyPort<Vec<WindowSnapshot>>),
     ListMonitors(RpcReplyPort<Vec<MonitorSnapshot>>),
+    ApplyWindow(WindowSnapshot, RpcReplyPort<Result<Hwnd, String>>),
     ApplyByHwnd(Hwnd, RpcReplyPort<Result<Hwnd, String>>),
     ApplyByHwndWithOptions(Hwnd, FavoriteOptions, RpcReplyPort<Result<Hwnd, String>>),
     ApplyByPid(Pid, RpcReplyPort<Result<Hwnd, String>>),

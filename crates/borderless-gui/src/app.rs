@@ -42,8 +42,13 @@ pub fn run() -> Result<()> {
     ProfileSpan::mark("gui.run: tracing initialized");
     let runtime = GuiRuntime::boot()?;
     ProfileSpan::mark("gui.run: runtime booted");
-    let initial_model = runtime.initial_model();
-    ProfileSpan::mark("gui.run: initial model loaded");
+    let initial_model = GuiModel::default()
+        .with_busy(true)
+        .with_status(StatusLine::info(
+            "Loading windows",
+            "The window list is loading in the background.",
+        ));
+    ProfileSpan::mark("gui.run: initial model prepared");
     let text = Locale::detect().tr();
     ProfileSpan::mark("gui.run: locale detected");
     App::new()
@@ -70,6 +75,7 @@ fn render_root(
     set_requested_theme(RequestedTheme::Default);
     let (model, set_model) = cx.use_async_state(initial_model);
     let (visuals, set_visuals) = cx.use_async_state(VisualCache::default());
+    schedule_initial_refresh(cx, runtime, &model, &set_model);
     schedule_visual_loading(cx, &model, &visuals, &set_visuals);
     let inner_width = cx.use_inner_size().width;
     let content = match model.page() {
@@ -112,6 +118,21 @@ fn render_root(
         .rows([GridLength::Auto, GridLength::Star(1.0)])
         .columns([GridLength::Star(1.0)])
         .into()
+}
+
+fn schedule_initial_refresh(
+    cx: &mut RenderCx,
+    runtime: &GuiRuntime,
+    model: &GuiModel,
+    set_model: &AsyncSetState<GuiModel>,
+) {
+    let runtime = runtime.clone();
+    let set_model = set_model.clone();
+    let model = model.clone();
+    cx.use_effect((), move || {
+        ProfileSpan::mark("gui.render: scheduling initial refresh");
+        runtime.refresh_windows(set_model, model);
+    });
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

@@ -50,7 +50,6 @@ where
             .load_applied_states()
             .unwrap_or_default()
             .into_iter()
-            .filter(|original| self.backend.by_hwnd(original.hwnd).ok().flatten().is_some())
             .map(|original| (original.hwnd, original))
             .collect();
         Ok(ControllerState { config, applied })
@@ -68,6 +67,10 @@ where
             }
             ControllerMsg::ListMonitors(reply) => {
                 let _ = reply.send(self.backend.monitors().unwrap_or_default());
+            }
+            ControllerMsg::ApplyWindow(window, reply) => {
+                let result = self.apply_window(state, Some(window), None);
+                let _ = reply.send(result.map_err(|err| err.to_string()));
             }
             ControllerMsg::ApplyByHwnd(hwnd, reply) => {
                 let result =

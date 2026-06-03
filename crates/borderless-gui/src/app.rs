@@ -4,13 +4,15 @@ use crate::runtime::GuiRuntime;
 use anyhow::Result;
 use borderless_core::profile::ProfileSpan;
 use borderless_core::{Hwnd, WindowSnapshot};
+use borderless_native::WindowVisuals;
+use std::collections::HashMap;
 use windows_reactor::{
     App, AsyncSetState, Backdrop, ComboBox, CommandBarLabelPos, Element, ElementExt, GridLength,
-    InfoBar, InfoBarSeverity, InnerConstraints, NavViewItem, NavViewPaneDisplayMode,
-    NavigationView, NumberBox, RenderCx, RequestedTheme, SymbolGlyph, ThemeRef, Thickness,
-    TitleBar, ToggleSwitch, VerticalAlignment, app_bar_button_icon, app_bar_separator, body,
-    body_strong, border, button, caption, command_bar, grid, hstack, scroll_viewer,
-    set_requested_theme, subtitle, title, vstack,
+    HorizontalAlignment, Image, ImageStretch, InfoBar, InfoBarSeverity, InnerConstraints,
+    NavViewItem, NavViewPaneDisplayMode, NavigationView, NumberBox, RenderCx, RequestedTheme,
+    SymbolGlyph, ThemeRef, Thickness, TitleBar, ToggleSwitch, VerticalAlignment,
+    app_bar_button_icon, app_bar_separator, body, body_strong, border, button, caption,
+    command_bar, grid, hstack, scroll_viewer, set_requested_theme, subtitle, title, vstack,
 };
 
 const SURFACE_RADIUS: f64 = 4.0;
@@ -28,6 +30,10 @@ const SECTION_TITLE_FONT_SIZE: f64 = 18.0;
 const BODY_FONT_SIZE: f64 = 13.0;
 const BODY_STRONG_FONT_SIZE: f64 = 13.0;
 const CAPTION_FONT_SIZE: f64 = 12.0;
+const ICON_BOX_SIZE: f64 = 32.0;
+const PREVIEW_WIDTH: f64 = 268.0;
+const PREVIEW_HEIGHT: f64 = 164.0;
+const VISUAL_ICON_PREFETCH: usize = 32;
 
 pub fn run() -> Result<()> {
     let _span = ProfileSpan::start("gui.run");
@@ -62,9 +68,11 @@ fn render_root(
 ) -> Element {
     set_requested_theme(RequestedTheme::Default);
     let (model, set_model) = cx.use_async_state(initial_model);
+    let (visuals, set_visuals) = cx.use_async_state(VisualCache::default());
+    schedule_visual_loading(cx, &model, &visuals, &set_visuals);
     let inner_width = cx.use_inner_size().width;
     let content = match model.page() {
-        Page::Windows => windows_page(runtime, &model, &set_model, text),
+        Page::Windows => windows_page(runtime, &model, &set_model, &visuals, text),
         Page::Favorites => favorites_page(runtime, &model, &set_model, text),
         Page::Settings => settings_page(runtime, &model, &set_model, text),
         Page::Logs => logs_page(&model, text),
@@ -125,6 +133,53 @@ impl NavLayout {
             }
         }
     }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct VisualCache {
+    icons: HashMap<Hwnd, Option<String>>,
+}
+
+impl VisualCache {
+    fn icon_uri(&self, hwnd: Hwnd) -> Option<&str> {
+        self.icons
+            .get(&hwnd)
+            .and_then(|uri| uri.as_ref().map(String::as_str))
+    }
+}
+
+fn schedule_visual_loading(
+    cx: &mut RenderCx,
+    model: &GuiModel,
+    visuals: &VisualCache,
+    set_visuals: &AsyncSetState<VisualCache>,
+) {
+    let icon_requests = model
+        .filtered_windows()
+        .into_iter()
+        .take(VISUAL_ICON_PREFETCH)
+        .filter(|window| !visuals.icons.contains_key(&window.hwnd))
+        .map(|window| window.hwnd)
+        .collect::<Vec<_>>();
+    let deps = icon_requests.clone();
+
+    if icon_requests.is_empty() {
+        cx.use_effect(deps, || {});
+        return;
+    }
+
+    let mut next = visuals.clone();
+    let set_visuals = set_visuals.clone();
+    cx.use_effect(deps, move || {
+        std::thread::spawn(move || {
+            let native = WindowVisuals;
+            for hwnd in icon_requests {
+                let uri = native.icon_uri(hwnd).ok().flatten();
+                next.icons.insert(hwnd, uri);
+            }
+            set_visuals.call(next);
+        });
+    });
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -208,10 +263,58 @@ fn meta_text(label: impl Into<String>) -> windows_reactor::TextBlock {
     caption(label).font_size(CAPTION_FONT_SIZE)
 }
 
+fn window_icon(uri: Option<&str>, process_name: &str) -> Element {
+    uri.map_or_else(
+        || {
+            let label = process_name
+                .chars()
+                .find(char::is_ascii_alphanumeric)
+                .map_or_else(|| "?".to_owned(), |ch| ch.to_ascii_uppercase().to_string());
+            border(
+                body_text(label)
+                    .font_size(BODY_STRONG_FONT_SIZE)
+                    .horizontal_alignment(HorizontalAlignment::Center),
+            )
+            .width(ICON_BOX_SIZE)
+            .height(ICON_BOX_SIZE)
+            .corner_radius(SURFACE_RADIUS)
+            .background(ThemeRef::ControlFillTertiary)
+            .padding(Thickness::uniform(6.0))
+            .into()
+        },
+        |uri| {
+            Image::new(uri)
+                .stretch(ImageStretch::Uniform)
+                .width(ICON_BOX_SIZE)
+                .height(ICON_BOX_SIZE)
+                .into()
+        },
+    )
+}
+
+fn preview_panel(text: Text) -> Element {
+    vstack((
+        meta_text(text.preview),
+        border(
+            body_text(text.preview_unavailable)
+                .horizontal_alignment(HorizontalAlignment::Center)
+                .vertical_alignment(VerticalAlignment::Center),
+        )
+        .width(PREVIEW_WIDTH)
+        .height(PREVIEW_HEIGHT)
+        .corner_radius(SURFACE_RADIUS)
+        .background(ThemeRef::ControlFillTertiary)
+        .padding(Thickness::uniform(8.0)),
+    ))
+    .spacing(TEXT_SPACING)
+    .into()
+}
+
 fn windows_page(
     runtime: &GuiRuntime,
     model: &GuiModel,
     set_model: &AsyncSetState<GuiModel>,
+    visuals: &VisualCache,
     text: Text,
 ) -> Element {
     let rows = model.filtered_windows();
@@ -219,9 +322,11 @@ fn windows_page(
     let list = if rows.is_empty() {
         empty_state(text.empty_windows_title, text.empty_windows_message)
     } else {
-        vstack(window_cards(runtime, model, set_model, &rows, text))
-            .spacing(12.0)
-            .into()
+        vstack(window_cards(
+            runtime, model, set_model, visuals, &rows, text,
+        ))
+        .spacing(12.0)
+        .into()
     };
 
     grid((
@@ -274,12 +379,13 @@ fn window_cards(
     runtime: &GuiRuntime,
     model: &GuiModel,
     set_model: &AsyncSetState<GuiModel>,
+    visuals: &VisualCache,
     windows: &[WindowSnapshot],
     text: Text,
 ) -> Vec<Element> {
     windows
         .iter()
-        .map(|window| window_card(runtime, model, set_model, window, text))
+        .map(|window| window_card(runtime, model, set_model, visuals, window, text))
         .collect()
 }
 
@@ -287,6 +393,7 @@ fn window_card(
     runtime: &GuiRuntime,
     model: &GuiModel,
     set_model: &AsyncSetState<GuiModel>,
+    visuals: &VisualCache,
     window: &WindowSnapshot,
     text: Text,
 ) -> Element {
@@ -298,15 +405,19 @@ fn window_card(
 
     surface(
         vstack((
-            vstack((
-                strong_text(title).wrap(),
-                meta_text(if selected {
-                    text.selected
-                } else {
-                    text.targetable
-                }),
+            hstack((
+                window_icon(visuals.icon_uri(hwnd), window.process_name.as_str()),
+                vstack((
+                    strong_text(title).wrap(),
+                    meta_text(if selected {
+                        text.selected
+                    } else {
+                        text.targetable
+                    }),
+                ))
+                .spacing(TEXT_SPACING),
             ))
-            .spacing(TEXT_SPACING),
+            .spacing(ACTION_SPACING),
             vstack((
                 meta_text(format!("{}: {}", text.process, process_name)).wrap(),
                 meta_text(format!(
@@ -390,6 +501,7 @@ fn detail_panel(
             surface(
                 vstack((
                     section_title(text.details),
+                    preview_panel(text),
                     strong_text(title).wrap(),
                     vstack((
                         meta_text(format!("{}: {}", text.process, process_name)).wrap(),

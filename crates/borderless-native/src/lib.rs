@@ -7,12 +7,14 @@ mod monitor;
 mod process;
 mod store;
 mod taskbar;
+mod visuals;
 
 pub use audio::AudioSessions;
 pub use catalog::WindowsCatalog;
 pub use cursor::CursorVisibility;
 pub use manipulation::WindowsManipulator;
 pub use store::TomlSettingsStore;
+pub use visuals::{WindowVisualAssets, WindowVisuals};
 
 use borderless_core::{CoreResult, EventSink};
 

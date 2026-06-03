@@ -9,6 +9,7 @@ license.workspace = true
 anyhow.workspace = true
 borderless-core.workspace = true
 directories.workspace = true
+png.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 toml.workspace = true

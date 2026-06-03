@@ -10,7 +10,7 @@ use windows_reactor::{
     NavigationView, NumberBox, RenderCx, RequestedTheme, SymbolGlyph, ThemeRef, Thickness,
     TitleBar, ToggleSwitch, VerticalAlignment, app_bar_button_icon, app_bar_separator, body,
     body_strong, border, button, caption, command_bar, grid, hstack, scroll_viewer,
-    set_requested_theme, subtitle, vstack,
+    set_requested_theme, subtitle, title, vstack,
 };
 
 const SURFACE_RADIUS: f64 = 4.0;
@@ -22,6 +22,8 @@ const DETAILS_PANE_WIDTH: f64 = 300.0;
 const SECTION_SPACING: f64 = 16.0;
 const TEXT_SPACING: f64 = 6.0;
 const ACTION_SPACING: f64 = 10.0;
+const NAV_PANE_EXPANDED_WIDTH: f64 = 1500.0;
+const NAV_PANE_MINIMAL_WIDTH: f64 = 1200.0;
 
 pub fn run() -> Result<()> {
     let _span = ProfileSpan::start("gui.run");
@@ -56,6 +58,7 @@ fn render_root(
 ) -> Element {
     set_requested_theme(RequestedTheme::Default);
     let (model, set_model) = cx.use_async_state(initial_model);
+    let nav_layout = NavLayout::for_width(cx.use_inner_size().width, &model);
     let content = match model.page() {
         Page::Windows => windows_page(runtime, &model, &set_model, text),
         Page::Favorites => favorites_page(runtime, &model, &set_model, text),
@@ -63,12 +66,11 @@ fn render_root(
         Page::Logs => logs_page(&model, text),
     };
 
-    let nav_view = NavigationView::new(nav_items(text), content)
+    let nav_view = NavigationView::new(nav_items(text, nav_layout.labels_visible), content)
         .pane_title(text.app_title)
-        .header(text.page(model.page()))
         .selected_tag(model.page().tag())
-        .pane_open(model.nav_pane_open())
-        .pane_display_mode(NavViewPaneDisplayMode::LeftCompact)
+        .pane_open(nav_layout.pane_open)
+        .pane_display_mode(nav_layout.pane_display_mode)
         .settings_visible(false)
         .auto_suggest_placeholder(text.search_windows)
         .on_search_text_changed({
@@ -89,7 +91,7 @@ fn render_root(
         .back_button_visible(false);
 
     grid((
-        app_title_bar(text, &model, &set_model).grid_row(0),
+        app_title_bar(text, &model, &set_model, nav_layout.toggle_visible).grid_row(0),
         nav_view.grid_row(1),
     ))
     .rows([GridLength::Auto, GridLength::Star(1.0)])
@@ -97,9 +99,54 @@ fn render_root(
     .into()
 }
 
-fn app_title_bar(text: Text, model: &GuiModel, set_model: &AsyncSetState<GuiModel>) -> Element {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct NavLayout {
+    pane_open: bool,
+    pane_display_mode: NavViewPaneDisplayMode,
+    toggle_visible: bool,
+    labels_visible: bool,
+}
+
+impl NavLayout {
+    fn for_width(width: f64, model: &GuiModel) -> Self {
+        if width >= NAV_PANE_EXPANDED_WIDTH {
+            Self {
+                pane_open: true,
+                pane_display_mode: NavViewPaneDisplayMode::Left,
+                toggle_visible: false,
+                labels_visible: true,
+            }
+        } else if width <= NAV_PANE_MINIMAL_WIDTH {
+            Self {
+                pane_open: false,
+                pane_display_mode: NavViewPaneDisplayMode::LeftMinimal,
+                toggle_visible: true,
+                labels_visible: false,
+            }
+        } else {
+            let pane_open = model.nav_pane_open();
+            Self {
+                pane_open,
+                pane_display_mode: if pane_open {
+                    NavViewPaneDisplayMode::Left
+                } else {
+                    NavViewPaneDisplayMode::LeftMinimal
+                },
+                toggle_visible: true,
+                labels_visible: pane_open,
+            }
+        }
+    }
+}
+
+fn app_title_bar(
+    text: Text,
+    model: &GuiModel,
+    set_model: &AsyncSetState<GuiModel>,
+    pane_toggle_visible: bool,
+) -> Element {
     TitleBar::new(text.app_title)
-        .pane_toggle_button_visible(true)
+        .pane_toggle_button_visible(pane_toggle_visible)
         .on_pane_toggle_requested({
             let set_model = set_model.clone();
             let model = model.clone();
@@ -112,21 +159,29 @@ fn app_title_bar(text: Text, model: &GuiModel, set_model: &AsyncSetState<GuiMode
         .into()
 }
 
-fn nav_items(text: Text) -> Vec<NavViewItem> {
+fn nav_items(text: Text, labels_visible: bool) -> Vec<NavViewItem> {
     vec![
-        NavViewItem::new(text.nav_windows)
+        NavViewItem::new(nav_label(text.nav_windows, labels_visible))
             .tag(Page::WINDOWS_TAG)
             .icon(SymbolGlyph::World),
-        NavViewItem::new(text.nav_favorites)
+        NavViewItem::new(nav_label(text.nav_favorites, labels_visible))
             .tag(Page::FAVORITES_TAG)
             .icon(SymbolGlyph::Favorite),
-        NavViewItem::new(text.nav_settings)
+        NavViewItem::new(nav_label(text.nav_settings, labels_visible))
             .tag(Page::SETTINGS_TAG)
             .icon(SymbolGlyph::Setting),
-        NavViewItem::new(text.nav_logs)
+        NavViewItem::new(nav_label(text.nav_logs, labels_visible))
             .tag(Page::LOGS_TAG)
             .icon(SymbolGlyph::Flag),
     ]
+}
+
+const fn nav_label(label: &'static str, labels_visible: bool) -> &'static str {
+    if labels_visible { label } else { "" }
+}
+
+fn page_title(label: &'static str) -> Element {
+    title(label).margin(Thickness::xy(PAGE_PADDING, 0.0)).into()
 }
 
 fn windows_page(
@@ -146,6 +201,7 @@ fn windows_page(
     };
 
     grid((
+        page_title(text.nav_windows).grid_row(0),
         command_bar(vec![
             app_bar_button_icon(text.refresh, SymbolGlyph::Sync),
             app_bar_button_icon(text.apply_selected, SymbolGlyph::Play),
@@ -163,9 +219,9 @@ fn windows_page(
                 handle_windows_command(&runtime, &set_model, model.clone(), &command, text);
             }
         })
-        .grid_row(0),
-        status_bar(model, set_model).grid_row(1),
-        aspect_controls(model, set_model, text).grid_row(2),
+        .grid_row(1),
+        status_bar(model, set_model).grid_row(2),
+        aspect_controls(model, set_model, text).grid_row(3),
         hstack((
             scroll_viewer(list)
                 .width(LIST_PANE_WIDTH)
@@ -175,10 +231,11 @@ fn windows_page(
                 .vertical_alignment(VerticalAlignment::Stretch),
         ))
         .spacing(SECTION_SPACING)
-        .grid_row(3)
+        .grid_row(4)
         .vertical_alignment(VerticalAlignment::Stretch),
     ))
     .rows([
+        GridLength::Auto,
         GridLength::Auto,
         GridLength::Auto,
         GridLength::Auto,
@@ -503,12 +560,17 @@ fn favorites_page(
         }),
     );
 
-    surface(
-        vstack(children).spacing(SECTION_SPACING),
-        false,
-        PANEL_PADDING,
-    )
-    .margin(PAGE_PADDING)
+    vstack((
+        page_title(text.nav_favorites),
+        surface(
+            vstack(children).spacing(SECTION_SPACING),
+            false,
+            PANEL_PADDING,
+        ),
+    ))
+    .spacing(SECTION_SPACING)
+    .padding(PAGE_PADDING)
+    .into()
 }
 
 fn settings_page(
@@ -518,6 +580,7 @@ fn settings_page(
     text: Text,
 ) -> Element {
     vstack((
+        page_title(text.nav_settings),
         body(text.settings_intro).wrap(),
         surface(
             vstack((
@@ -610,10 +673,11 @@ fn logs_page(model: &GuiModel, text: Text) -> Element {
         .collect::<Vec<Element>>();
 
     grid((
-        body(text.logs_intro).wrap().grid_row(0),
-        scroll_viewer(vstack(rows).spacing(4.0)).grid_row(1),
+        page_title(text.nav_logs).grid_row(0),
+        body(text.logs_intro).wrap().grid_row(1),
+        scroll_viewer(vstack(rows).spacing(4.0)).grid_row(2),
     ))
-    .rows([GridLength::Auto, GridLength::Star(1.0)])
+    .rows([GridLength::Auto, GridLength::Auto, GridLength::Star(1.0)])
     .row_spacing(SECTION_SPACING)
     .padding(PAGE_PADDING)
     .into()

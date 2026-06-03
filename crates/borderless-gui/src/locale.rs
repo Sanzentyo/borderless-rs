@@ -1,4 +1,3 @@
-use crate::model::Page;
 use std::ops::Deref;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -198,14 +197,4 @@ impl TextTable {
         paused: "停止中",
         logs_intro: "最近のUI操作と実行結果です。",
     };
-
-    #[must_use]
-    pub const fn page(&self, page: Page) -> &'static str {
-        match page {
-            Page::Windows => self.nav_windows,
-            Page::Favorites => self.nav_favorites,
-            Page::Settings => self.nav_settings,
-            Page::Logs => self.nav_logs,
-        }
-    }
 }

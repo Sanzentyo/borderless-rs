@@ -145,7 +145,7 @@ The Windows page exposes aspect-fit controls instead of a single hard-coded 4:3 
 - custom width/height values;
 - a target display choice (`Current`, `Primary`, or a monitor from `ListMonitors`).
 
-Applying aspect fit sends an explicit `FavoriteOptions` override through `ControllerMsg::ApplyByHwndWithOptions` with `FavoriteSize::AspectFit { width, height }`. The core session planner resolves the selected target frame, then computes a centered rectangle with that ratio. The rectangle is capped at the original/current window size instead of scaling the game up. Some games keep mouse hit testing in their startup client-size coordinate space even when Windows visually scales the window; avoiding upscale keeps input aligned for those games. `should_maximize` is forced off for this mode so Windows does not stretch the game back to the full 16:9 monitor.
+Applying aspect fit sends an explicit `FavoriteOptions` override through `ControllerMsg::ApplyByHwndWithOptions` with `FavoriteSize::AspectFit { width, height }`. The core session planner resolves the selected target frame, then computes the largest centered rectangle with that ratio. On a 1920x1080 monitor, 4:3 becomes 1440x1080 at x=240, y=0. `should_maximize` is forced off for this mode so Windows does not stretch the game back to the full 16:9 monitor.
 
 HWND-targeted apply bypasses the normal targetable-window filter. This is important because a first borderless apply removes window styles, so a second aspect-fit apply must still be able to find the same HWND.
 
@@ -154,6 +154,8 @@ Dedicated black-band overlay windows are not implemented yet; currently the unus
 ## DPI and input scaling
 
 `windows-reactor` requests `DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2` when the GUI app starts rendering. `borderless-cli` requests the same awareness at process startup before using the native Win32 backend. This keeps `GetWindowRect`, monitor rectangles, and `SetWindowPos` in the same physical coordinate space as the target game window. Without this, Windows DPI virtualization can make the aspect-fit rectangle look visually plausible while mouse input lands at scaled or offset coordinates inside the game.
+
+Native apply/restore temporarily switches the calling thread to the target HWND's own DPI awareness context before changing styles or calling `SetWindowPos`. This avoids cross-process DPI virtualization where the Borderless Oxide UI is per-monitor aware but the game is system-DPI aware or DPI unaware.
 
 ## Environment reset
 

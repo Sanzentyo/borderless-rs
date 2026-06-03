@@ -169,6 +169,9 @@ where
         explicit_options: Option<&borderless_core::FavoriteOptions>,
     ) -> Result<Hwnd, borderless_core::CoreError> {
         let window = window.ok_or(borderless_core::CoreError::Transition("window not found"))?;
+        if explicit_options.is_none() && state.applied.contains_key(&window.hwnd) {
+            return Ok(window.hwnd);
+        }
         let favorite = state
             .config
             .favorites

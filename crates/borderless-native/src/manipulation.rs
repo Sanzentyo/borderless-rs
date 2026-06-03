@@ -2,6 +2,9 @@ use crate::{audio::AudioSessions, cursor::CursorVisibility, ffi, taskbar};
 use borderless_core::{
     BorderlessPlan, CoreResult, Hwnd, MenuPolicy, OriginalWindowState, Pid, WindowManipulator,
 };
+use windows::Win32::UI::HiDpi::{
+    DPI_AWARENESS_CONTEXT, GetWindowDpiAwarenessContext, SetThreadDpiAwarenessContext,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
     DrawMenuBar, GetMenu, GetMenuItemCount, RemoveMenu, SetWindowLongW, SetWindowPos, ShowWindow,
     WINDOW_LONG_PTR_INDEX,
@@ -50,6 +53,7 @@ impl WindowManipulator for WindowsManipulator {
 
 fn apply_borderless_plan(plan: &BorderlessPlan) -> CoreResult<()> {
     let hwnd = ffi::hwnd(plan.original.hwnd);
+    let _dpi = WindowDpiContext::enter(hwnd);
 
     if matches!(plan.menu_policy, MenuPolicy::Remove) {
         remove_menu(hwnd)?;
@@ -108,6 +112,7 @@ fn apply_borderless_plan(plan: &BorderlessPlan) -> CoreResult<()> {
 
 fn restore(original: &OriginalWindowState) -> CoreResult<()> {
     let hwnd = ffi::hwnd(original.hwnd);
+    let _dpi = WindowDpiContext::enter(hwnd);
     unsafe {
         let _ = SetWindowLongW(
             hwnd,
@@ -159,6 +164,26 @@ fn restore(original: &OriginalWindowState) -> CoreResult<()> {
         .into()
     })
     .map_err(|_| borderless_core::CoreError::Transition("restore z-order failed"))
+}
+
+struct WindowDpiContext {
+    previous: DPI_AWARENESS_CONTEXT,
+}
+
+impl WindowDpiContext {
+    fn enter(hwnd: windows::Win32::Foundation::HWND) -> Self {
+        let target = unsafe { GetWindowDpiAwarenessContext(hwnd) };
+        let previous = unsafe { SetThreadDpiAwarenessContext(target) };
+        Self { previous }
+    }
+}
+
+impl Drop for WindowDpiContext {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = SetThreadDpiAwarenessContext(self.previous);
+        }
+    }
 }
 
 fn remove_menu(hwnd: windows::Win32::Foundation::HWND) -> CoreResult<()> {

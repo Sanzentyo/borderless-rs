@@ -4,7 +4,7 @@ use crate::runtime::GuiRuntime;
 use anyhow::Result;
 use borderless_core::profile::ProfileSpan;
 use borderless_core::{Hwnd, WindowSnapshot};
-use borderless_native::WindowVisuals;
+use borderless_native::{Clipboard, WindowVisuals};
 use std::collections::HashMap;
 use windows_reactor::{
     App, AsyncSetState, Backdrop, ComboBox, CommandBarLabelPos, Element, ElementExt, GridLength,
@@ -12,7 +12,8 @@ use windows_reactor::{
     NavViewItem, NavViewPaneDisplayMode, NavigationView, NumberBox, RenderCx, RequestedTheme,
     SymbolGlyph, ThemeRef, Thickness, TitleBar, ToggleSwitch, VerticalAlignment,
     app_bar_button_icon, app_bar_separator, body, body_strong, border, button, caption,
-    command_bar, grid, hstack, scroll_viewer, set_requested_theme, subtitle, title, vstack,
+    command_bar, grid, hstack, rich_edit_box, scroll_viewer, set_requested_theme, subtitle, title,
+    vstack,
 };
 
 const SURFACE_RADIUS: f64 = 4.0;
@@ -75,7 +76,7 @@ fn render_root(
         Page::Windows => windows_page(runtime, &model, &set_model, &visuals, text),
         Page::Favorites => favorites_page(runtime, &model, &set_model, text),
         Page::Settings => settings_page(runtime, &model, &set_model, text),
-        Page::Logs => logs_page(&model, text),
+        Page::Logs => logs_page(&model, &set_model, text),
     };
 
     let nav_layout = NavLayout::for_page(model.page(), inner_width);
@@ -351,15 +352,18 @@ fn windows_page(
         .grid_row(1),
         status_bar(model, set_model).grid_row(2),
         aspect_controls(model, set_model, text).grid_row(3),
-        hstack((
+        grid((
             scroll_viewer(list)
                 .width(LIST_PANE_WIDTH)
-                .vertical_alignment(VerticalAlignment::Stretch),
+                .vertical_alignment(VerticalAlignment::Stretch)
+                .grid_column(0),
             detail_panel(runtime, model, set_model, selected, text)
                 .width(DETAILS_PANE_WIDTH)
-                .vertical_alignment(VerticalAlignment::Stretch),
+                .vertical_alignment(VerticalAlignment::Stretch)
+                .grid_column(1),
         ))
-        .spacing(SECTION_SPACING)
+        .columns([GridLength::Star(1.0), GridLength::Auto])
+        .column_spacing(SECTION_SPACING)
         .grid_row(4)
         .vertical_alignment(VerticalAlignment::Stretch),
     ))
@@ -799,24 +803,57 @@ fn settings_page(
     .into()
 }
 
-fn logs_page(model: &GuiModel, text: Text) -> Element {
-    let rows = model
+fn logs_page(model: &GuiModel, set_model: &AsyncSetState<GuiModel>, text: Text) -> Element {
+    let logs = recent_logs_text(model);
+
+    grid((
+        page_title(text.nav_logs).grid_row(0),
+        command_bar(vec![app_bar_button_icon(text.copy_logs, SymbolGlyph::Copy)])
+            .default_label_position(CommandBarLabelPos::Right)
+            .on_click({
+                let set_model = set_model.clone();
+                let model = model.clone();
+                let logs = logs.clone();
+                move |command: String| {
+                    if command == text.copy_logs {
+                        let status = match Clipboard.set_text(&logs) {
+                            Ok(()) => {
+                                StatusLine::success(text.logs_copied, text.logs_copied_message)
+                            }
+                            Err(err) => StatusLine::error("Copy failed", err.to_string()),
+                        };
+                        set_model.call(model.clone().with_status(status));
+                    }
+                }
+            })
+            .grid_row(1),
+        body_text(text.logs_intro).wrap().grid_row(2),
+        rich_edit_box(logs)
+            .read_only()
+            .font_size(CAPTION_FONT_SIZE)
+            .vertical_alignment(VerticalAlignment::Stretch)
+            .grid_row(3),
+    ))
+    .rows([
+        GridLength::Auto,
+        GridLength::Auto,
+        GridLength::Auto,
+        GridLength::Star(1.0),
+    ])
+    .row_spacing(SECTION_SPACING)
+    .padding(PAGE_PADDING)
+    .into()
+}
+
+fn recent_logs_text(model: &GuiModel) -> String {
+    model
         .logs()
         .iter()
         .rev()
         .take(80)
-        .map(|line| meta_text(line).wrap().into())
-        .collect::<Vec<Element>>();
-
-    grid((
-        page_title(text.nav_logs).grid_row(0),
-        body_text(text.logs_intro).wrap().grid_row(1),
-        scroll_viewer(vstack(rows).spacing(4.0)).grid_row(2),
-    ))
-    .rows([GridLength::Auto, GridLength::Auto, GridLength::Star(1.0)])
-    .row_spacing(SECTION_SPACING)
-    .padding(PAGE_PADDING)
-    .into()
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("\r\n")
 }
 
 fn handle_windows_command(

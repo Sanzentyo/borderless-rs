@@ -1,5 +1,6 @@
 mod audio;
 mod catalog;
+mod clipboard;
 mod cursor;
 mod ffi;
 mod manipulation;
@@ -11,6 +12,7 @@ mod visuals;
 
 pub use audio::AudioSessions;
 pub use catalog::WindowsCatalog;
+pub use clipboard::Clipboard;
 pub use cursor::CursorVisibility;
 pub use manipulation::WindowsManipulator;
 pub use store::TomlSettingsStore;

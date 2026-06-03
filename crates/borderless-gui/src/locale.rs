@@ -93,6 +93,9 @@ pub struct TextTable {
     pub running: &'static str,
     pub paused: &'static str,
     pub logs_intro: &'static str,
+    pub copy_logs: &'static str,
+    pub logs_copied: &'static str,
+    pub logs_copied_message: &'static str,
 }
 
 impl TextTable {
@@ -148,6 +151,9 @@ impl TextTable {
         running: "Running",
         paused: "Paused",
         logs_intro: "Recent UI and runtime actions.",
+        copy_logs: "Copy",
+        logs_copied: "Logs copied",
+        logs_copied_message: "Recent logs are on the clipboard.",
     };
 
     pub const JA: Self = Self {
@@ -202,5 +208,8 @@ impl TextTable {
         running: "実行中",
         paused: "停止中",
         logs_intro: "最近のUI操作と実行結果です。",
+        copy_logs: "コピー",
+        logs_copied: "ログをコピーしました",
+        logs_copied_message: "最近のログをクリップボードに入れました。",
     };
 }

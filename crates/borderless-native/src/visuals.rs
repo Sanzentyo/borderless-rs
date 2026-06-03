@@ -1,6 +1,10 @@
 use crate::ffi;
-use base64::Engine;
 use borderless_core::{CoreError, CoreResult, Hwnd, Rect};
+use directories::ProjectDirs;
+use std::fs;
+use std::fs::File;
+use std::io::BufWriter;
+use std::path::{Path, PathBuf};
 use windows::Win32::Foundation::{CloseHandle, HANDLE, LPARAM, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CreateCompatibleDC, CreateDIBSection, DIB_RGB_COLORS,
@@ -43,7 +47,9 @@ impl WindowVisuals {
         let Some(icon) = OwnedIcon::from_hwnd(hwnd) else {
             return Ok(None);
         };
-        render_icon_to_data_uri(icon.handle, size).map(Some)
+        let path = cache_path("icons", ffi::from_hwnd(hwnd), "png");
+        render_icon_to_png(icon.handle, size, &path)?;
+        Ok(Some(file_uri(&path)))
     }
 
     pub const fn preview_uri(&self, _hwnd: Hwnd, _rect: Rect) -> CoreResult<Option<String>> {
@@ -180,14 +186,10 @@ fn icon_size(hwnd: windows::Win32::Foundation::HWND) -> i32 {
     system_size.max(MIN_ICON_SIZE)
 }
 
-fn render_icon_to_data_uri(icon: HICON, size: i32) -> CoreResult<String> {
+fn render_icon_to_png(icon: HICON, size: i32, path: &Path) -> CoreResult<()> {
     let mut pixels = render_icon_pixels(icon, size)?;
     normalize_alpha(&mut pixels);
-    let png = png_bytes(size, size, &bgra_to_rgba(&pixels))?;
-    Ok(format!(
-        "data:image/png;base64,{}",
-        base64::engine::general_purpose::STANDARD.encode(png)
-    ))
+    write_png(path, size, size, &bgra_to_rgba(&pixels))
 }
 
 fn render_icon_pixels(icon: HICON, size: i32) -> CoreResult<Vec<u8>> {
@@ -270,22 +272,25 @@ fn bgra_to_rgba(pixels: &[u8]) -> Vec<u8> {
         .collect()
 }
 
-fn png_bytes(width: i32, height: i32, rgba: &[u8]) -> CoreResult<Vec<u8>> {
+fn write_png(path: &Path, width: i32, height: i32, rgba: &[u8]) -> CoreResult<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|_| CoreError::Transition("create visual cache directory failed"))?;
+    }
+
+    let file = File::create(path).map_err(|_| CoreError::Transition("create icon png failed"))?;
+    let writer = BufWriter::new(file);
     let width = u32::try_from(width).map_err(|_| CoreError::Transition("invalid png width"))?;
     let height = u32::try_from(height).map_err(|_| CoreError::Transition("invalid png height"))?;
-    let mut out = Vec::new();
-    {
-        let mut encoder = png::Encoder::new(&mut out, width, height);
-        encoder.set_color(png::ColorType::Rgba);
-        encoder.set_depth(png::BitDepth::Eight);
-        let mut writer = encoder
-            .write_header()
-            .map_err(|_| CoreError::Transition("write png header failed"))?;
-        writer
-            .write_image_data(rgba)
-            .map_err(|_| CoreError::Transition("write png data failed"))?;
-    }
-    Ok(out)
+    let mut encoder = png::Encoder::new(writer, width, height);
+    encoder.set_color(png::ColorType::Rgba);
+    encoder.set_depth(png::BitDepth::Eight);
+    let mut png_writer = encoder
+        .write_header()
+        .map_err(|_| CoreError::Transition("write png header failed"))?;
+    png_writer
+        .write_image_data(rgba)
+        .map_err(|_| CoreError::Transition("write png data failed"))
 }
 
 fn image_byte_count(width: i32, height: i32) -> CoreResult<usize> {
@@ -294,4 +299,32 @@ fn image_byte_count(width: i32, height: i32) -> CoreResult<usize> {
         .and_then(|value| value.checked_mul(i64::from(ICON_BITS_PER_PIXEL / 8)))
         .ok_or(CoreError::Transition("bitmap dimensions are too large"))?;
     usize::try_from(pixels).map_err(|_| CoreError::Transition("bitmap dimensions are too large"))
+}
+
+fn cache_path(kind: &str, hwnd: Hwnd, extension: &str) -> PathBuf {
+    let base = ProjectDirs::from("dev", "BorderlessOxide", "Borderless Oxide")
+        .map_or_else(std::env::temp_dir, |dirs| dirs.cache_dir().to_path_buf());
+    let filename = format!(
+        "{:016X}.{extension}",
+        usize::from_ne_bytes(hwnd.0.to_ne_bytes())
+    );
+    base.join("visuals").join(kind).join(filename)
+}
+
+fn file_uri(path: &Path) -> String {
+    let path = path.to_string_lossy().replace('\\', "/");
+    format!("file:///{}", encode_uri_path(&path))
+}
+
+fn encode_uri_path(path: &str) -> String {
+    path.chars().fold(String::new(), |mut out, ch| {
+        match ch {
+            ' ' => out.push_str("%20"),
+            '#' => out.push_str("%23"),
+            '%' => out.push_str("%25"),
+            '?' => out.push_str("%3F"),
+            _ => out.push(ch),
+        }
+        out
+    })
 }

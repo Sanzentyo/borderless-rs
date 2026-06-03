@@ -20,7 +20,6 @@ rev = "db87ba9940e49e84fbacb1fe494ec81a2a7690db"
 
 [workspace.dependencies]
 anyhow = "1.0.102"
-base64 = "0.22.1"
 bitflags = { version = "2.11.1", features = ["serde"] }
 clap = { version = "4.6.1", features = ["derive", "env"] }
 directories = "6.0.0"

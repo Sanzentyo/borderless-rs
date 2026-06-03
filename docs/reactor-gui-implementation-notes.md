@@ -157,6 +157,10 @@ Dedicated black-band overlay windows are not implemented yet; currently the unus
 
 Native apply/restore temporarily switches the calling thread to the target HWND's own DPI awareness context before changing styles or calling `SetWindowPos`. This avoids cross-process DPI virtualization where the Borderless Oxide UI is per-monitor aware but the game is system-DPI aware or DPI unaware.
 
+When a managed window is scaled from its original client size, the native backend also installs a foreground-only low-level mouse transform. Physical mouse points inside the displayed target rectangle are mapped back into the original client coordinate space and sent to the target as `WM_MOUSE*` messages. This addresses fixed-client games whose visuals scale but whose hit testing stays in startup-size coordinates. The transform is removed on restore and is skipped when the displayed size already matches the source client size.
+
+This layer intentionally only rewrites window-message mouse input. Games that poll `GetCursorPos`, DirectInput, or RawInput need a separate input backend because those paths do not consume rewritten `WM_MOUSE*` messages.
+
 ## Environment reset
 
 `GuiRuntime` keeps a reset-on-exit flag, exposed in Settings. When enabled, the final runtime drop asks the controller to show the taskbar and cursor again. Apply-time taskbar hiding uses the planned placement rectangle and hides only taskbar windows whose rectangles intersect that target area; manual Settings buttons still use the broad show/hide command.

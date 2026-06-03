@@ -188,6 +188,7 @@ where
                 style: original.style,
                 ex_style: original.ex_style,
                 rect: original.rect,
+                client_rect: original.client_rect,
                 ..window.clone()
             },
         );

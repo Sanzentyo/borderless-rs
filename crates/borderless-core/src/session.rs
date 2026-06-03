@@ -230,6 +230,7 @@ mod tests {
             title: crate::types::WindowTitle::new("terminal"),
             class_name: "Window".to_owned(),
             rect: Rect::new(-3847, -6, -1272, 1401).unwrap(),
+            client_rect: None,
             style: crate::window::StyleBits::VISIBLE,
             ex_style: crate::window::ExStyleBits::default(),
             is_visible: true,

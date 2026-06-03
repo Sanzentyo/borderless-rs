@@ -1,24 +1,37 @@
-use crate::{audio::AudioSessions, cursor::CursorVisibility, ffi, taskbar};
-use borderless_core::{
-    BorderlessPlan, CoreResult, Hwnd, MenuPolicy, OriginalWindowState, Pid, WindowManipulator,
+use crate::{
+    audio::AudioSessions,
+    cursor::CursorVisibility,
+    ffi,
+    input::{InputScaler, MouseTransform},
+    taskbar,
 };
+use borderless_core::{
+    BorderlessPlan, CoreResult, Hwnd, MenuPolicy, OriginalWindowState, Pid, Rect, WindowManipulator,
+};
+use windows::Win32::Foundation::RECT;
 use windows::Win32::UI::HiDpi::{
     DPI_AWARENESS_CONTEXT, GetWindowDpiAwarenessContext, SetThreadDpiAwarenessContext,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    DrawMenuBar, GetMenu, GetMenuItemCount, RemoveMenu, SetWindowLongW, SetWindowPos, ShowWindow,
-    WINDOW_LONG_PTR_INDEX,
+    DrawMenuBar, GetClientRect, GetMenu, GetMenuItemCount, RemoveMenu, SetWindowLongW,
+    SetWindowPos, ShowWindow, WINDOW_LONG_PTR_INDEX,
 };
 
 #[derive(Clone, Debug, Default)]
 pub struct WindowsManipulator {
     cursor: CursorVisibility,
     audio: AudioSessions,
+    input: InputScaler,
 }
 
 impl WindowManipulator for WindowsManipulator {
     fn apply_plan(&self, plan: &BorderlessPlan) -> CoreResult<OriginalWindowState> {
-        apply_borderless_plan(plan)?;
+        let applied = apply_borderless_plan(plan)?;
+        if let Some(transform) = applied.input_transform {
+            self.input.set_transform(transform);
+        } else {
+            self.input.clear(plan.original.hwnd);
+        }
         if plan.hide_windows_taskbar {
             taskbar::set_visible_for_rect(false, plan.placement.rect);
         }
@@ -30,11 +43,13 @@ impl WindowManipulator for WindowsManipulator {
             // the target as unmuted now and lets the watcher flip it when it loses focus.
             self.audio.set_process_muted(plan.original.hwnd, false)?;
         }
-        Ok(plan.original.clone())
+        Ok(applied.original)
     }
 
     fn restore_original(&self, original: &OriginalWindowState) -> CoreResult<()> {
-        restore(original)
+        restore(original)?;
+        self.input.clear(original.hwnd);
+        Ok(())
     }
 
     fn set_taskbar_visible(&self, visible: bool) -> CoreResult<()> {
@@ -51,9 +66,15 @@ impl WindowManipulator for WindowsManipulator {
     }
 }
 
-fn apply_borderless_plan(plan: &BorderlessPlan) -> CoreResult<()> {
+struct AppliedWindow {
+    original: OriginalWindowState,
+    input_transform: Option<MouseTransform>,
+}
+
+fn apply_borderless_plan(plan: &BorderlessPlan) -> CoreResult<AppliedWindow> {
     let hwnd = ffi::hwnd(plan.original.hwnd);
     let _dpi = WindowDpiContext::enter(hwnd);
+    let client_rect = client_rect(hwnd)?;
 
     if matches!(plan.menu_policy, MenuPolicy::Remove) {
         remove_menu(hwnd)?;
@@ -107,7 +128,12 @@ fn apply_borderless_plan(plan: &BorderlessPlan) -> CoreResult<()> {
         }
     }
 
-    Ok(())
+    let mut original = plan.original.clone();
+    original.client_rect = Some(client_rect);
+    Ok(AppliedWindow {
+        original,
+        input_transform: input_transform(plan, client_rect),
+    })
 }
 
 fn restore(original: &OriginalWindowState) -> CoreResult<()> {
@@ -164,6 +190,23 @@ fn restore(original: &OriginalWindowState) -> CoreResult<()> {
         .into()
     })
     .map_err(|_| borderless_core::CoreError::Transition("restore z-order failed"))
+}
+
+fn client_rect(hwnd: windows::Win32::Foundation::HWND) -> CoreResult<Rect> {
+    let mut raw = RECT::default();
+    unsafe { GetClientRect(hwnd, &raw mut raw) }
+        .map_err(|_| borderless_core::CoreError::Transition("GetClientRect failed"))?;
+    ffi::rect(raw)
+}
+
+fn input_transform(plan: &BorderlessPlan, client_rect: Rect) -> Option<MouseTransform> {
+    let visual_rect = plan.placement.rect;
+    (visual_rect.width() != client_rect.width() || visual_rect.height() != client_rect.height())
+        .then_some(MouseTransform {
+            hwnd: plan.original.hwnd,
+            visual_rect,
+            source_client_rect: plan.original.client_rect.unwrap_or(client_rect),
+        })
 }
 
 struct WindowDpiContext {

@@ -4,7 +4,7 @@ use borderless_core::{CoreResult, Pid, ProcessName, WindowCatalog, WindowSnapsho
 use std::cell::RefCell;
 use windows::Win32::Foundation::{HWND, LPARAM, RECT};
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetClassNameW, GetWindowLongW, GetWindowRect, GetWindowTextLengthW,
+    EnumWindows, GetClassNameW, GetClientRect, GetWindowLongW, GetWindowRect, GetWindowTextLengthW,
     GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible, WINDOW_LONG_PTR_INDEX,
 };
 use windows::core::BOOL;
@@ -122,10 +122,17 @@ fn snapshot_from_hwnd(hwnd: HWND, process_names: &[(Pid, ProcessName)]) -> Optio
         title,
         class_name,
         rect,
+        client_rect: client_rect(hwnd),
         style: ffi::style(style),
         ex_style: ffi::ex_style(ex_style),
         is_visible: unsafe { IsWindowVisible(hwnd).as_bool() },
     })
+}
+
+fn client_rect(hwnd: HWND) -> Option<borderless_core::Rect> {
+    let mut raw_rect = RECT::default();
+    unsafe { GetClientRect(hwnd, &raw mut raw_rect) }.ok()?;
+    ffi::rect(raw_rect).ok()
 }
 
 fn window_text(hwnd: HWND) -> WindowTitle {

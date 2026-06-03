@@ -38,6 +38,8 @@ pub struct WindowSnapshot {
     pub title: WindowTitle,
     pub class_name: String,
     pub rect: Rect,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_rect: Option<Rect>,
     pub style: StyleBits,
     pub ex_style: ExStyleBits,
     pub is_visible: bool,
@@ -98,6 +100,8 @@ pub struct OriginalWindowState {
     pub style: StyleBits,
     pub ex_style: ExStyleBits,
     pub rect: Rect,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_rect: Option<Rect>,
     pub topmost: bool,
 }
 
@@ -108,6 +112,7 @@ impl From<&WindowSnapshot> for OriginalWindowState {
             style: value.style,
             ex_style: value.ex_style,
             rect: value.rect,
+            client_rect: value.client_rect,
             topmost: false,
         }
     }
@@ -125,6 +130,7 @@ mod tests {
             title: WindowTitle::new("game"),
             class_name: "GameWindow".to_owned(),
             rect: Rect::new(0, 0, 1280, 720).unwrap(),
+            client_rect: None,
             style,
             ex_style: ExStyleBits::default(),
             is_visible: true,

@@ -415,6 +415,8 @@ fn window_card(
                     strong_text(title).wrap(),
                     meta_text(if selected {
                         text.selected
+                    } else if window.is_borderless_like() {
+                        text.borderless
                     } else {
                         text.targetable
                     }),

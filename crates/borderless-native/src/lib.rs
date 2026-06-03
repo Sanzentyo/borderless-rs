@@ -81,6 +81,19 @@ impl borderless_core::SettingsStore for NativeBackend {
     }
 }
 
+impl borderless_core::AppliedStateStore for NativeBackend {
+    fn load_applied_states(&self) -> CoreResult<Vec<borderless_core::OriginalWindowState>> {
+        borderless_core::AppliedStateStore::load_applied_states(&self.store)
+    }
+
+    fn save_applied_states(
+        &self,
+        states: &[borderless_core::OriginalWindowState],
+    ) -> CoreResult<()> {
+        borderless_core::AppliedStateStore::save_applied_states(&self.store, states)
+    }
+}
+
 impl EventSink for NativeBackend {
     fn emit(&self, event: borderless_core::reducer::DomainEvent) {
         tracing::debug!(?event, "domain event");

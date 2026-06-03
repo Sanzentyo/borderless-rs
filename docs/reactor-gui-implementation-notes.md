@@ -159,6 +159,12 @@ Dedicated black-band overlay windows are not implemented yet; currently the unus
 
 `GuiRuntime` keeps a reset-on-exit flag, exposed in Settings. When enabled, the final runtime drop asks the controller to show the taskbar and cursor again. Apply-time taskbar hiding uses the planned placement rectangle and hides only taskbar windows whose rectangles intersect that target area; manual Settings buttons still use the broad show/hide command.
 
+## Applied state journal
+
+The runtime persists captured `OriginalWindowState` records to `applied-windows.toml` through `AppliedStateStore`. This lets a later GUI/CLI process restore a window that was left borderless after Borderless Oxide exited. Re-applying or aspect-fitting an already-managed HWND keeps the first captured original state instead of overwriting it with the borderless state.
+
+The Windows list keeps visible borderless-like windows targetable so a managed window can still be selected and restored after the app restarts. The UI marks these rows as `Borderless` / `枠なし`. This is a style-based state check, not proof that Borderless Oxide originally modified the window; the journal is the authoritative source for restore data.
+
 ## UI action flow
 
 ```mermaid

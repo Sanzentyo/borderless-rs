@@ -1,7 +1,7 @@
 use crate::{
     WatcherMsg, controller::ControllerActor, messages::ControllerMsg, watcher::WatcherActor,
 };
-use borderless_core::{SettingsStore, WindowCatalog, WindowManipulator};
+use borderless_core::{AppliedStateStore, SettingsStore, WindowCatalog, WindowManipulator};
 use ractor::{Actor, ActorRef};
 use std::sync::Arc;
 
@@ -12,7 +12,13 @@ pub struct RuntimeHandle {
 
 pub async fn spawn_runtime<B>(backend: B) -> Result<RuntimeHandle, ractor::SpawnErr>
 where
-    B: WindowCatalog + WindowManipulator + SettingsStore + Send + Sync + 'static,
+    B: WindowCatalog
+        + WindowManipulator
+        + SettingsStore
+        + AppliedStateStore
+        + Send
+        + Sync
+        + 'static,
 {
     let backend = Arc::new(backend);
     let (controller, _controller_handle) = Actor::spawn(

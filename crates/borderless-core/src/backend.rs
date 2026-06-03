@@ -49,6 +49,11 @@ pub trait SettingsStore: Send + Sync {
     fn save_config(&self, config: &AppConfig) -> CoreResult<()>;
 }
 
+pub trait AppliedStateStore: Send + Sync {
+    fn load_applied_states(&self) -> CoreResult<Vec<OriginalWindowState>>;
+    fn save_applied_states(&self, states: &[OriginalWindowState]) -> CoreResult<()>;
+}
+
 pub trait EventSink: Send + Sync {
     fn emit(&self, event: crate::reducer::DomainEvent);
 }

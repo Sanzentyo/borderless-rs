@@ -46,16 +46,29 @@ pub struct WindowSnapshot {
 impl WindowSnapshot {
     #[must_use]
     pub fn is_targetable(&self) -> bool {
+        self.has_targetable_chrome() || self.is_borderless_like()
+    }
+
+    #[must_use]
+    pub fn is_borderless_like(&self) -> bool {
         self.is_visible
             && !self.hwnd.is_null()
             && self.rect.width().0 > 0
             && self.rect.height().0 > 0
-            && self.style.intersects(
-                StyleBits::CAPTION
-                    | StyleBits::BORDER
-                    | StyleBits::THICK_FRAME
-                    | StyleBits::SYSTEM_MENU,
-            )
+            && !self.style.intersects(Self::target_chrome_bits())
+    }
+
+    #[must_use]
+    fn has_targetable_chrome(&self) -> bool {
+        self.is_visible
+            && !self.hwnd.is_null()
+            && self.rect.width().0 > 0
+            && self.rect.height().0 > 0
+            && self.style.intersects(Self::target_chrome_bits())
+    }
+
+    fn target_chrome_bits() -> StyleBits {
+        StyleBits::CAPTION | StyleBits::BORDER | StyleBits::THICK_FRAME | StyleBits::SYSTEM_MENU
     }
 }
 
@@ -97,5 +110,40 @@ impl From<&WindowSnapshot> for OriginalWindowState {
             rect: value.rect,
             topmost: false,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn snapshot(style: StyleBits) -> WindowSnapshot {
+        WindowSnapshot {
+            hwnd: Hwnd(42),
+            pid: Pid::new(1).unwrap(),
+            process_name: ProcessName::new("game.exe").unwrap(),
+            title: WindowTitle::new("game"),
+            class_name: "GameWindow".to_owned(),
+            rect: Rect::new(0, 0, 1280, 720).unwrap(),
+            style,
+            ex_style: ExStyleBits::default(),
+            is_visible: true,
+        }
+    }
+
+    #[test]
+    fn borderless_like_window_stays_targetable_for_restore() {
+        let window = snapshot(StyleBits::VISIBLE);
+
+        assert!(window.is_borderless_like());
+        assert!(window.is_targetable());
+    }
+
+    #[test]
+    fn regular_chromed_window_is_targetable_not_borderless() {
+        let window = snapshot(StyleBits::VISIBLE | StyleBits::CAPTION | StyleBits::SYSTEM_MENU);
+
+        assert!(!window.is_borderless_like());
+        assert!(window.is_targetable());
     }
 }

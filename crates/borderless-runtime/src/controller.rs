@@ -1,7 +1,7 @@
 use crate::messages::ControllerMsg;
 use borderless_core::{
-    AppConfig, BorderlessSession, Favorite, FavoriteId, Hwnd, Observed, OriginalWindowState,
-    SettingsStore, WindowCatalog, WindowManipulator, WindowSnapshot,
+    AppConfig, AppliedStateStore, BorderlessSession, Favorite, FavoriteId, Hwnd, Observed,
+    OriginalWindowState, SettingsStore, WindowCatalog, WindowManipulator, WindowSnapshot,
 };
 use ractor::{Actor, ActorProcessingErr, ActorRef};
 use std::collections::HashMap;
@@ -27,7 +27,13 @@ impl<B> ControllerActor<B> {
 #[ractor::async_trait]
 impl<B> Actor for ControllerActor<B>
 where
-    B: WindowCatalog + WindowManipulator + SettingsStore + Send + Sync + 'static,
+    B: WindowCatalog
+        + WindowManipulator
+        + SettingsStore
+        + AppliedStateStore
+        + Send
+        + Sync
+        + 'static,
 {
     type Msg = ControllerMsg;
     type State = ControllerState;
@@ -39,10 +45,15 @@ where
         (): (),
     ) -> Result<Self::State, ActorProcessingErr> {
         let config = self.backend.load_config().unwrap_or_default();
-        Ok(ControllerState {
-            config,
-            applied: HashMap::new(),
-        })
+        let applied = self
+            .backend
+            .load_applied_states()
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|original| self.backend.by_hwnd(original.hwnd).ok().flatten().is_some())
+            .map(|original| (original.hwnd, original))
+            .collect();
+        Ok(ControllerState { config, applied })
     }
 
     async fn handle(
@@ -98,7 +109,8 @@ where
                         self.backend
                             .restore_original(&original)
                             .map_err(|err| err.to_string())
-                    });
+                    })
+                    .and_then(|()| self.save_applied(state).map_err(|err| err.to_string()));
                 let _ = reply.send(result);
             }
             ControllerMsg::AddFavorite(favorite, reply) => {
@@ -148,7 +160,7 @@ where
 
 impl<B> ControllerActor<B>
 where
-    B: WindowCatalog + WindowManipulator + SettingsStore,
+    B: WindowCatalog + WindowManipulator + SettingsStore + AppliedStateStore,
 {
     fn apply_window(
         &self,
@@ -169,9 +181,19 @@ where
         let monitors = self.backend.monitors()?;
         let prepared =
             BorderlessSession::<Observed>::observe(window.clone()).prepare(&options, &monitors)?;
+        let captured = state.applied.get(&window.hwnd).cloned();
         let original = self.backend.apply_plan(prepared.plan())?;
-        state.applied.insert(window.hwnd, original);
+        state
+            .applied
+            .insert(window.hwnd, captured.unwrap_or(original));
+        self.save_applied(state)?;
         Ok(window.hwnd)
+    }
+
+    fn save_applied(&self, state: &ControllerState) -> Result<(), borderless_core::CoreError> {
+        let mut states = state.applied.values().cloned().collect::<Vec<_>>();
+        states.sort_by_key(|original| original.hwnd.0);
+        self.backend.save_applied_states(&states)
     }
 }
 

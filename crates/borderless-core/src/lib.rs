@@ -12,7 +12,7 @@ pub mod types;
 pub mod window;
 
 pub use action::{BorderlessPlan, EdgeOffsets, MenuPolicy, Placement, TargetFrame};
-pub use backend::{EventSink, SettingsStore, WindowCatalog, WindowManipulator};
+pub use backend::{AppliedStateStore, EventSink, SettingsStore, WindowCatalog, WindowManipulator};
 pub use config::{AppConfig, PollInterval};
 pub use error::{CoreError, CoreResult};
 pub use favorite::{Favorite, FavoriteMatcher, FavoriteOptions, FavoriteSize};

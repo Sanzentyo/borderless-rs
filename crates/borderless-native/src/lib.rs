@@ -4,7 +4,6 @@ mod clipboard;
 mod cursor;
 mod dpi;
 mod ffi;
-mod input;
 mod manipulation;
 mod monitor;
 mod process;

@@ -1,10 +1,4 @@
-use crate::{
-    audio::AudioSessions,
-    cursor::CursorVisibility,
-    ffi,
-    input::{InputScaler, MouseTransform},
-    taskbar,
-};
+use crate::{audio::AudioSessions, cursor::CursorVisibility, ffi, taskbar};
 use borderless_core::{
     BorderlessPlan, CoreResult, Hwnd, MenuPolicy, OriginalWindowState, Pid, Rect, WindowManipulator,
 };
@@ -21,17 +15,11 @@ use windows::Win32::UI::WindowsAndMessaging::{
 pub struct WindowsManipulator {
     cursor: CursorVisibility,
     audio: AudioSessions,
-    input: InputScaler,
 }
 
 impl WindowManipulator for WindowsManipulator {
     fn apply_plan(&self, plan: &BorderlessPlan) -> CoreResult<OriginalWindowState> {
-        let applied = apply_borderless_plan(plan)?;
-        if let Some(transform) = applied.input_transform {
-            self.input.set_transform(transform);
-        } else {
-            self.input.clear(plan.original.hwnd);
-        }
+        let original = apply_borderless_plan(plan)?;
         if plan.hide_windows_taskbar {
             taskbar::set_visible_for_rect(false, plan.placement.rect);
         }
@@ -43,13 +31,11 @@ impl WindowManipulator for WindowsManipulator {
             // the target as unmuted now and lets the watcher flip it when it loses focus.
             self.audio.set_process_muted(plan.original.hwnd, false)?;
         }
-        Ok(applied.original)
+        Ok(original)
     }
 
     fn restore_original(&self, original: &OriginalWindowState) -> CoreResult<()> {
-        restore(original)?;
-        self.input.clear(original.hwnd);
-        Ok(())
+        restore(original)
     }
 
     fn set_taskbar_visible(&self, visible: bool) -> CoreResult<()> {
@@ -66,12 +52,7 @@ impl WindowManipulator for WindowsManipulator {
     }
 }
 
-struct AppliedWindow {
-    original: OriginalWindowState,
-    input_transform: Option<MouseTransform>,
-}
-
-fn apply_borderless_plan(plan: &BorderlessPlan) -> CoreResult<AppliedWindow> {
+fn apply_borderless_plan(plan: &BorderlessPlan) -> CoreResult<OriginalWindowState> {
     let hwnd = ffi::hwnd(plan.original.hwnd);
     let _dpi = WindowDpiContext::enter(hwnd);
     let client_rect = client_rect(hwnd)?;
@@ -130,10 +111,7 @@ fn apply_borderless_plan(plan: &BorderlessPlan) -> CoreResult<AppliedWindow> {
 
     let mut original = plan.original.clone();
     original.client_rect = Some(client_rect);
-    Ok(AppliedWindow {
-        original,
-        input_transform: input_transform(plan, client_rect),
-    })
+    Ok(original)
 }
 
 fn restore(original: &OriginalWindowState) -> CoreResult<()> {
@@ -197,16 +175,6 @@ fn client_rect(hwnd: windows::Win32::Foundation::HWND) -> CoreResult<Rect> {
     unsafe { GetClientRect(hwnd, &raw mut raw) }
         .map_err(|_| borderless_core::CoreError::Transition("GetClientRect failed"))?;
     ffi::rect(raw)
-}
-
-fn input_transform(plan: &BorderlessPlan, client_rect: Rect) -> Option<MouseTransform> {
-    let visual_rect = plan.placement.rect;
-    (visual_rect.width() != client_rect.width() || visual_rect.height() != client_rect.height())
-        .then_some(MouseTransform {
-            hwnd: plan.original.hwnd,
-            visual_rect,
-            source_client_rect: plan.original.client_rect.unwrap_or(client_rect),
-        })
 }
 
 struct WindowDpiContext {

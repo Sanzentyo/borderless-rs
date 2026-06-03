@@ -151,15 +151,23 @@ HWND-targeted apply bypasses the normal targetable-window filter. This is import
 
 Dedicated black-band overlay windows are not implemented yet; currently the unused monitor area remains whatever is behind the centered game unless the taskbar/background is hidden separately.
 
-## DPI and input scaling
+## DPI and scaled input
 
 `windows-reactor` requests `DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2` when the GUI app starts rendering. `borderless-cli` requests the same awareness at process startup before using the native Win32 backend. This keeps `GetWindowRect`, monitor rectangles, and `SetWindowPos` in the same physical coordinate space as the target game window. Without this, Windows DPI virtualization can make the aspect-fit rectangle look visually plausible while mouse input lands at scaled or offset coordinates inside the game.
 
 Native apply/restore temporarily switches the calling thread to the target HWND's own DPI awareness context before changing styles or calling `SetWindowPos`. This avoids cross-process DPI virtualization where the Borderless Oxide UI is per-monitor aware but the game is system-DPI aware or DPI unaware.
 
-When a managed window is scaled from its original client size, the native backend also installs a foreground-only low-level mouse transform. Physical mouse points inside the displayed target rectangle are mapped back into the original client coordinate space and sent to the target as `WM_MOUSE*` messages. This addresses fixed-client games whose visuals scale but whose hit testing stays in startup-size coordinates. The transform is removed on restore and is skipped when the displayed size already matches the source client size.
+The native backend must not use a global low-level mouse hook to fix scaled input. A prototype used `WH_MOUSE_LL`, suppressed the original event, transformed coordinates, and posted `WM_MOUSE*` messages back to the target. That is the wrong layer for games: it can make the mouse feel frozen, and it still does not help programs that read `GetCursorPos`, DirectInput, or RawInput instead of window messages.
 
-This layer intentionally only rewrites window-message mouse input. Games that poll `GetCursorPos`, DirectInput, or RawInput need a separate input backend because those paths do not consume rewritten `WM_MOUSE*` messages.
+Existing borderless-window style libraries generally solve a different problem: they control their own window procedure, extend the client area, and handle non-client messages such as `WM_NCCALCSIZE` and `WM_NCHITTEST`. Borderless Oxide manipulates another process's HWND from outside, so it cannot safely use that same technique unless it owns, subclasses, or injects code into the target process.
+
+Root options for fixed-client games are therefore:
+
+- preserve the target's original client size and create a separate scaled presentation surface that forwards transformed input to the target;
+- add a target-process integration layer that transforms input before the game reads it;
+- use a game-specific resolution/configuration path when one exists.
+
+The first option is the cleanest external-process design. The current backend records `client_rect` in `OriginalWindowState` so a future presentation/input proxy can know the source coordinate space without depending on global hooks.
 
 ## Environment reset
 

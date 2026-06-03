@@ -20,6 +20,7 @@ rev = "db87ba9940e49e84fbacb1fe494ec81a2a7690db"
 
 [workspace.dependencies]
 anyhow = "1.0.102"
+base64 = "0.22.1"
 bitflags = { version = "2.11.1", features = ["serde"] }
 clap = { version = "4.6.1", features = ["derive", "env"] }
 directories = "6.0.0"
@@ -44,6 +45,7 @@ windows = { git = "https://github.com/microsoft/windows-rs", rev = "db87ba9940e4
     "Win32_System_Memory",
     "Win32_System_ProcessStatus",
     "Win32_System_Threading",
+    "Win32_UI_HiDpi",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging"

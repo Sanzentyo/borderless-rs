@@ -358,11 +358,11 @@ fn windows_page(
                 .vertical_alignment(VerticalAlignment::Stretch)
                 .grid_column(0),
             detail_panel(runtime, model, set_model, selected, text)
-                .width(DETAILS_PANE_WIDTH)
+                .min_width(DETAILS_PANE_WIDTH)
                 .vertical_alignment(VerticalAlignment::Stretch)
                 .grid_column(1),
         ))
-        .columns([GridLength::Star(1.0), GridLength::Auto])
+        .columns([GridLength::Auto, GridLength::Star(1.0)])
         .column_spacing(SECTION_SPACING)
         .grid_row(4)
         .vertical_alignment(VerticalAlignment::Stretch),

@@ -22,7 +22,8 @@ Borderless Oxide の GUI に、対象ウィンドウの実アイコンとプレ�
 ## Current Product Decision
 
 - `PrintWindow` / `BitBlt` 由来のプレビューは、黒画像や中途半端な描画になりやすいため GUI では表示しない。
-- アイコンは `WM_GETICON` / class icon から取得し、alpha 付き PNG としてキャッシュして表示する。
+- アイコンは `WM_GETICON` / class icon / exe fallback から取得し、alpha 付き画像をメモリ上の data URI として表示する。画像ファイルのキャッシュは使わない。WinUI の URI 画像読み込みが data URI を受けない環境が見つかった場合は、ファイルキャッシュへ戻すより Reactor 側に stream/pixel source を追加する。
+- 現在の `windows-reactor::Image` は URI 文字列を WinUI `BitmapImage.UriSource` に渡す経路なので、`HICON` や BGRA ピクセルを PNG 化せず直接表示するには Reactor 側に `WriteableBitmap` / pixel buffer を受け取る image source API が必要。
 - プレビューを再開する場合は、壊れた静止画を出すのではなく、DWM thumbnail または Windows Graphics Capture の PoC 結果を待つ。
 
 ## Deliverable

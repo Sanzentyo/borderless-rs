@@ -153,7 +153,7 @@ Dedicated black-band overlay windows are not implemented yet; currently the unus
 
 ## DPI and input scaling
 
-`borderless-gui` and `borderless-cli` request `DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2` at process startup before using the native Win32 backend. This keeps `GetWindowRect`, monitor rectangles, and `SetWindowPos` in the same physical coordinate space as the target game window. Without this, Windows DPI virtualization can make the aspect-fit rectangle look visually plausible while mouse input lands at scaled or offset coordinates inside the game.
+`windows-reactor` requests `DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2` when the GUI app starts rendering. `borderless-cli` requests the same awareness at process startup before using the native Win32 backend. This keeps `GetWindowRect`, monitor rectangles, and `SetWindowPos` in the same physical coordinate space as the target game window. Without this, Windows DPI virtualization can make the aspect-fit rectangle look visually plausible while mouse input lands at scaled or offset coordinates inside the game.
 
 ## Environment reset
 

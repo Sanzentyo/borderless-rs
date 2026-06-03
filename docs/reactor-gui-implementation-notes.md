@@ -151,6 +151,10 @@ HWND-targeted apply bypasses the normal targetable-window filter. This is import
 
 Dedicated black-band overlay windows are not implemented yet; currently the unused monitor area remains whatever is behind the centered game unless the taskbar/background is hidden separately.
 
+## DPI and input scaling
+
+`borderless-gui` and `borderless-cli` request `DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2` at process startup before using the native Win32 backend. This keeps `GetWindowRect`, monitor rectangles, and `SetWindowPos` in the same physical coordinate space as the target game window. Without this, Windows DPI virtualization can make the aspect-fit rectangle look visually plausible while mouse input lands at scaled or offset coordinates inside the game.
+
 ## Environment reset
 
 `GuiRuntime` keeps a reset-on-exit flag, exposed in Settings. When enabled, the final runtime drop asks the controller to show the taskbar and cursor again. Apply-time taskbar hiding uses the planned placement rectangle and hides only taskbar windows whose rectangles intersect that target area; manual Settings buttons still use the broad show/hide command.

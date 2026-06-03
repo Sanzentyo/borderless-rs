@@ -72,6 +72,7 @@ enum FavoriteCommand {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    borderless_native::enable_per_monitor_awareness();
     tracing_subscriber::fmt().with_env_filter("info").init();
     let cli = Cli::parse();
     let runtime = spawn_runtime(NativeBackend::new()).await?;

@@ -46,7 +46,7 @@ impl BorderlessSession<Observed> {
             }
             FavoriteSize::AspectFit { width, height } => {
                 let target = resolve_target_frame(&self.snapshot, monitors, options.target_frame)?;
-                aspect_fit_rect(target, width, height)?
+                aspect_fit_rect_capped(target, width, height, self.snapshot.rect)?
             }
         }
         .with_offsets(options.offsets);
@@ -73,26 +73,54 @@ impl BorderlessSession<Observed> {
     }
 }
 
-fn aspect_fit_rect(
+fn aspect_fit_rect_capped(
     target: crate::types::Rect,
     aspect_width: u32,
     aspect_height: u32,
+    cap: crate::types::Rect,
 ) -> CoreResult<crate::types::Rect> {
     if aspect_width == 0 || aspect_height == 0 {
         return Err(CoreError::Transition("aspect ratio must be non-zero"));
     }
 
-    let target_width = i64::from(target.width().0);
-    let target_height = i64::from(target.height().0);
     let aspect_width = i64::from(aspect_width);
     let aspect_height = i64::from(aspect_height);
+    let (target_width, target_height) = aspect_fit_dimensions(
+        i64::from(target.width().0),
+        i64::from(target.height().0),
+        aspect_width,
+        aspect_height,
+    );
+    let max_width = target_width.min(i64::from(cap.width().0));
+    let max_height = target_height.min(i64::from(cap.height().0));
+    let (width, height) = aspect_fit_dimensions(max_width, max_height, aspect_width, aspect_height);
 
-    let (width, height) = if target_width * aspect_height <= target_height * aspect_width {
+    centered_rect(target, width, height)
+}
+
+fn aspect_fit_dimensions(
+    target_width: i64,
+    target_height: i64,
+    aspect_width: i64,
+    aspect_height: i64,
+) -> (i64, i64) {
+    if target_width * aspect_height <= target_height * aspect_width {
         (target_width, target_width * aspect_height / aspect_width)
     } else {
         (target_height * aspect_width / aspect_height, target_height)
-    };
+    }
+}
 
+fn centered_rect(
+    target: crate::types::Rect,
+    width: i64,
+    height: i64,
+) -> CoreResult<crate::types::Rect> {
+    if width <= 0 || height <= 0 {
+        return Err(CoreError::Transition("aspect rect is empty"));
+    }
+    let target_width = i64::from(target.width().0);
+    let target_height = i64::from(target.height().0);
     let left = i64::from(target.left.0) + (target_width - width) / 2;
     let top = i64::from(target.top.0) + (target_height - height) / 2;
     crate::types::Rect::new(
@@ -178,15 +206,33 @@ mod tests {
     #[test]
     fn aspect_fit_centers_four_by_three_inside_sixteen_by_nine() {
         let monitor = Rect::new(0, 0, 1920, 1080).expect("valid monitor rect");
-        let fitted = aspect_fit_rect(monitor, 4, 3).expect("valid aspect fit");
+        let fitted = aspect_fit_rect_capped(monitor, 4, 3, monitor).expect("valid aspect fit");
 
         assert_eq!(fitted, Rect::new(240, 0, 1680, 1080).unwrap());
     }
 
     #[test]
+    fn capped_aspect_fit_does_not_upscale_past_window_size() {
+        let monitor = Rect::new(0, 0, 1920, 1080).expect("valid monitor rect");
+        let source = Rect::new(100, 100, 1124, 868).expect("valid source rect");
+        let fitted = aspect_fit_rect_capped(monitor, 4, 3, source).expect("valid aspect fit");
+
+        assert_eq!(fitted, Rect::new(448, 156, 1472, 924).unwrap());
+    }
+
+    #[test]
+    fn capped_aspect_fit_can_shrink_to_requested_ratio() {
+        let monitor = Rect::new(0, 0, 1920, 1080).expect("valid monitor rect");
+        let source = Rect::new(0, 0, 1280, 720).expect("valid source rect");
+        let fitted = aspect_fit_rect_capped(monitor, 4, 3, source).expect("valid aspect fit");
+
+        assert_eq!(fitted, Rect::new(480, 180, 1440, 900).unwrap());
+    }
+
+    #[test]
     fn aspect_fit_centers_wide_inside_tall_area() {
         let monitor = Rect::new(0, 0, 1200, 1600).expect("valid monitor rect");
-        let fitted = aspect_fit_rect(monitor, 16, 9).expect("valid aspect fit");
+        let fitted = aspect_fit_rect_capped(monitor, 16, 9, monitor).expect("valid aspect fit");
 
         assert_eq!(fitted, Rect::new(0, 462, 1200, 1137).unwrap());
     }

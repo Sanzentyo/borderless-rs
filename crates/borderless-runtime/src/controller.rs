@@ -178,10 +178,19 @@ where
             .cloned()
             .or_else(|| favorite.map(|favorite| favorite.options.clone()))
             .unwrap_or_default();
+        let captured = state.applied.get(&window.hwnd).cloned();
+        let planning_window = captured.as_ref().map_or_else(
+            || window.clone(),
+            |original| WindowSnapshot {
+                style: original.style,
+                ex_style: original.ex_style,
+                rect: original.rect,
+                ..window.clone()
+            },
+        );
         let monitors = self.backend.monitors()?;
         let prepared =
-            BorderlessSession::<Observed>::observe(window.clone()).prepare(&options, &monitors)?;
-        let captured = state.applied.get(&window.hwnd).cloned();
+            BorderlessSession::<Observed>::observe(planning_window).prepare(&options, &monitors)?;
         let original = self.backend.apply_plan(prepared.plan())?;
         state
             .applied

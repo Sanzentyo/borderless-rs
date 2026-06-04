@@ -1283,7 +1283,7 @@ fn simple_copy_wgsl_source(
         )));
     }
     Ok(format!(
-        "{declarations}\n\n@compute @workgroup_size({workgroup_x}, {workgroup_y}, 1)\nfn main(@builtin(global_invocation_id) gid: vec3<u32>) {{\n    let pos = vec2<u32>(gid.xy);\n    let value = textureLoad({input}, vec2<i32>(pos), 0);\n    textureStore({output}, vec2<i32>(pos), value);\n}}\n",
+        "{declarations}\n\n@compute @workgroup_size({workgroup_x}, {workgroup_y}, 1)\nfn main(@builtin(global_invocation_id) gid: vec3<u32>) {{\n    let pos = vec2<u32>(gid.xy);\n    let input_size = textureDimensions({input});\n    let output_size = textureDimensions({output});\n    if (pos.x >= input_size.x || pos.y >= input_size.y || pos.x >= output_size.x || pos.y >= output_size.y) {{\n        return;\n    }}\n    let value = textureLoad({input}, vec2<i32>(pos), 0);\n    textureStore({output}, vec2<i32>(pos), value);\n}}\n",
         declarations = declarations.source
     ))
 }
@@ -1854,6 +1854,16 @@ void Pass1(uint2 pos) { OUTPUT[pos] = INPUT[pos]; }
         );
         assert!(pass.wgsl_source.contains("textureLoad(INPUT"));
         assert!(pass.wgsl_source.contains("textureStore(OUTPUT"));
+        assert!(pass.wgsl_source.contains("textureDimensions(INPUT)"));
+        assert!(pass.wgsl_source.contains("textureDimensions(OUTPUT)"));
+        assert!(
+            pass.wgsl_source
+                .contains("pos.x >= input_size.x || pos.y >= input_size.y")
+        );
+        assert!(
+            pass.wgsl_source
+                .contains("pos.x >= output_size.x || pos.y >= output_size.y")
+        );
         assert!(
             pass.wgsl_source
                 .contains("@group(0) @binding(32) var INPUT")

@@ -184,6 +184,7 @@ dependencies = [
  "borderless-magpie",
  "borderless-native",
  "borderless-runtime",
+ "borderless-upscale-core",
  "ractor",
  "tokio",
  "tracing",

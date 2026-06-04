@@ -103,6 +103,28 @@ impl GuiRuntime {
         });
     }
 
+    pub fn prepare_upscale(&self, hwnd: Hwnd, set_model: AsyncSetState<GuiModel>, model: GuiModel) {
+        self.inner.spawn(async move {
+            let next = match model.upscale_pipeline() {
+                Some(pipeline) => {
+                    let algorithm = model.scaling_algorithm();
+                    model.with_status(StatusLine::success(
+                        "Upscale profile prepared",
+                        format!(
+                            "{} is selected for {hwnd}; renderer={:?}, capture={:?}, scaling={:?}.",
+                            algorithm.name, pipeline.renderer, pipeline.capture, pipeline.scaling
+                        ),
+                    ))
+                }
+                None => model.with_status(StatusLine::warning(
+                    "No upscale target",
+                    "Select a target window before preparing an upscale profile.",
+                )),
+            };
+            set_model.call(next.with_busy(false));
+        });
+    }
+
     pub fn restore_window(&self, hwnd: Hwnd, set_model: AsyncSetState<GuiModel>, model: GuiModel) {
         let controller = self.controller.clone();
         self.inner.spawn(async move {

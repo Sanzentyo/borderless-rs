@@ -6,8 +6,14 @@ use borderless_core::{PhysicalRect, ScaleFactor};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+pub mod registry;
 pub mod retro;
 
+pub use registry::{
+    CURATED_SCALING_ALGORITHMS, ScalingAlgorithm, ScalingAlgorithmFamily, ScalingAlgorithmId,
+    ScalingImplementationSource, curated_scaling_algorithms, scaling_algorithm,
+    scaling_algorithm_names,
+};
 pub use retro::{RetroCompatibilityPlan, RetroCompatibilityRequest, RetroCompatibilityRequirement};
 
 pub type UpscaleResult<T> = Result<T, UpscaleError>;

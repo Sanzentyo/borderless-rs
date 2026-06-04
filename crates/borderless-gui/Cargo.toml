@@ -16,6 +16,7 @@ borderless-core.workspace = true
 borderless-magpie = { workspace = true, optional = true }
 borderless-runtime.workspace = true
 borderless-native.workspace = true
+borderless-upscale-core.workspace = true
 ractor.workspace = true
 tokio.workspace = true
 tracing.workspace = true

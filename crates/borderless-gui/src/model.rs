@@ -2,6 +2,10 @@ use borderless_core::{
     Favorite, FavoriteId, FavoriteMatcher, FavoriteOptions, FavoriteSize, Hwnd, MonitorSnapshot,
     TargetFrame, WindowSnapshot,
 };
+use borderless_upscale_core::{
+    CaptureBackend, InputBackend, RendererBackend, ScalingAlgorithm, ScalingAlgorithmId,
+    ScalingPipeline, scaling_algorithm,
+};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Page {
@@ -161,6 +165,7 @@ pub struct GuiModel {
     aspect_preset: AspectPreset,
     custom_aspect_width: u32,
     custom_aspect_height: u32,
+    scaling_algorithm: ScalingAlgorithmId,
     target_display_index: i32,
     reset_environment_on_exit: bool,
     status: StatusLine,
@@ -180,6 +185,7 @@ impl Default for GuiModel {
             aspect_preset: AspectPreset::default(),
             custom_aspect_width: 4,
             custom_aspect_height: 3,
+            scaling_algorithm: ScalingAlgorithmId::default(),
             target_display_index: 0,
             reset_environment_on_exit: true,
             status: StatusLine::default(),
@@ -245,6 +251,16 @@ impl GuiModel {
     #[must_use]
     pub const fn target_display_index(&self) -> i32 {
         self.target_display_index
+    }
+
+    #[must_use]
+    pub const fn scaling_algorithm_id(&self) -> ScalingAlgorithmId {
+        self.scaling_algorithm
+    }
+
+    #[must_use]
+    pub fn scaling_algorithm(&self) -> &'static ScalingAlgorithm {
+        scaling_algorithm(self.scaling_algorithm)
     }
 
     #[must_use]
@@ -341,6 +357,12 @@ impl GuiModel {
     }
 
     #[must_use]
+    pub const fn with_scaling_algorithm(mut self, algorithm: ScalingAlgorithmId) -> Self {
+        self.scaling_algorithm = algorithm;
+        self
+    }
+
+    #[must_use]
     pub const fn with_target_display_index(mut self, index: i32) -> Self {
         self.target_display_index = index;
         self
@@ -370,6 +392,48 @@ impl GuiModel {
             should_maximize: false,
             ..FavoriteOptions::default()
         })
+    }
+
+    #[must_use]
+    pub fn upscale_pipeline(&self) -> Option<ScalingPipeline> {
+        let window = self.selected_window()?;
+        let output_rect = self.selected_output_rect(window);
+        let algorithm = self.scaling_algorithm();
+
+        Some(ScalingPipeline::proxy_presentation(
+            CaptureBackend::GraphicsCapture,
+            algorithm.backend,
+            InputBackend::WindowMessageRemap,
+            RendererBackend::WgpuDx12,
+            window.rect,
+            output_rect,
+        ))
+    }
+
+    fn selected_output_rect(&self, window: &WindowSnapshot) -> borderless_core::PhysicalRect {
+        match self.target_frame() {
+            TargetFrame::CurrentMonitor => self
+                .monitors
+                .iter()
+                .copied()
+                .map(|monitor| (monitor, monitor.window_intersection_area(window)))
+                .max_by_key(|(_, area)| *area)
+                .filter(|(_, area)| *area > 0)
+                .map_or(window.rect, |(monitor, _)| monitor.rect),
+            TargetFrame::PrimaryMonitor => self
+                .monitors
+                .iter()
+                .copied()
+                .find(|monitor| monitor.primary)
+                .map_or(window.rect, |monitor| monitor.rect),
+            TargetFrame::Monitor(id) => self
+                .monitors
+                .iter()
+                .copied()
+                .find(|monitor| monitor.id == id)
+                .map_or(window.rect, |monitor| monitor.rect),
+            TargetFrame::Exact(rect) => rect,
+        }
     }
 
     fn push_log(&mut self, status: &StatusLine) {

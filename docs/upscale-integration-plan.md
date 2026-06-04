@@ -77,6 +77,19 @@ enum LegacyPresentationStrategy {
 }
 ```
 
+Initial GUI exposure is intentionally limited to a curated registry:
+
+| GUI scaler | Core id | Backend | Implementation boundary |
+| --- | --- | --- | --- |
+| Lanczos | `lanczos` | `ScalingBackend::Lanczos` | Clean-room Rust/wgpu shader path. |
+| FSR 1.0 | `fsr1` | `ScalingBackend::Fsr1` | Magpie-port compatible GPL boundary. |
+| Anime4K | `anime4k` | `ScalingBackend::Anime4k` | Magpie-port compatible GPL boundary. |
+
+The registry lives in `borderless-upscale-core` as `ScalingAlgorithmId` plus a static curated
+table. The GUI depends only on this permissive metadata and prepares a `ScalingPipeline`; the
+Magpie-derived renderer code remains behind GPL crates/features. Adding another scaler should be a
+new registry entry plus a renderer implementation, not another hard-coded GUI branch.
+
 The default build can use these types without linking GPL scaler crates. Enabling `magpie-port`
 pulls in `borderless-magpie`; enabling `magpie-wgpu-compare` additionally pulls in the DirectX/wgpu
 comparison crate.

@@ -5,6 +5,7 @@ use anyhow::Result;
 use borderless_core::profile::ProfileSpan;
 use borderless_core::{Hwnd, WindowSnapshot};
 use borderless_native::{Clipboard, WindowVisuals};
+use borderless_upscale_core::{ScalingAlgorithmId, scaling_algorithm_names};
 use std::collections::HashMap;
 use windows_reactor::{
     App, AsyncSetState, Backdrop, ComboBox, CommandBarLabelPos, Element, ElementExt, GridLength,
@@ -357,6 +358,7 @@ fn windows_page(
             app_bar_button_icon(text.refresh, SymbolGlyph::Sync),
             app_bar_button_icon(text.apply_selected, SymbolGlyph::Play),
             app_bar_button_icon(text.apply_aspect_fit, SymbolGlyph::Find),
+            app_bar_button_icon(text.apply_upscale, SymbolGlyph::Find),
             app_bar_button_icon(text.restore_selected, SymbolGlyph::Undo),
             app_bar_separator(),
             app_bar_button_icon(text.add_favorite, SymbolGlyph::Add),
@@ -641,6 +643,20 @@ fn aspect_controls(model: &GuiModel, set_model: &AsyncSetState<GuiModel>, text: 
                     let model = model.clone();
                     move |index| set_model.call(model.clone().with_target_display_index(index))
                 }),
+            ComboBox::new(scaling_algorithm_names())
+                .header(text.scaler)
+                .selected_index(model.scaling_algorithm_id().selected_index())
+                .on_selection_changed({
+                    let set_model = set_model.clone();
+                    let model = model.clone();
+                    move |index| {
+                        set_model.call(
+                            model
+                                .clone()
+                                .with_scaling_algorithm(ScalingAlgorithmId::from_index(index)),
+                        );
+                    }
+                }),
         ))
         .spacing(16.0),
         false,
@@ -905,6 +921,15 @@ fn handle_windows_command(
             None => set_model.call(model.with_status(StatusLine::warning(
                 "No window selected",
                 "Select a target window before applying aspect fit.",
+            ))),
+        },
+        command if command == text.apply_upscale => match model.selected() {
+            Some(hwnd) => {
+                runtime.prepare_upscale(hwnd, set_model.clone(), model.with_busy(true));
+            }
+            None => set_model.call(model.with_status(StatusLine::warning(
+                "No window selected",
+                "Select a target window before preparing an upscale profile.",
             ))),
         },
         command if command == text.restore_selected => match model.selected() {

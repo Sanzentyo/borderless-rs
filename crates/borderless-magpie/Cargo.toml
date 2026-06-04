@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+[package]
+name = "borderless-magpie"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license = "GPL-3.0-or-later"
+authors.workspace = true
+repository.workspace = true
+
+[features]
+default = []
+magpie-port = []
+shader-assets = []
+wgpu-compare = ["dep:borderless-upscale-wgpu", "borderless-upscale-wgpu/dx12"]
+
+[dependencies]
+borderless-core.workspace = true
+borderless-upscale-core.workspace = true
+borderless-upscale-wgpu = { workspace = true, optional = true }
+serde.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

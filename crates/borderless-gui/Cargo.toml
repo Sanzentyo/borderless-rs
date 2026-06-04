@@ -5,9 +5,15 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
+[features]
+default = []
+magpie-port = ["dep:borderless-magpie"]
+magpie-wgpu-compare = ["magpie-port", "borderless-magpie/wgpu-compare"]
+
 [dependencies]
 anyhow.workspace = true
 borderless-core.workspace = true
+borderless-magpie = { workspace = true, optional = true }
 borderless-runtime.workspace = true
 borderless-native.workspace = true
 ractor.workspace = true

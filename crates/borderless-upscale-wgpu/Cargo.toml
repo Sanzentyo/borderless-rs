@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+[package]
+name = "borderless-upscale-wgpu"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license = "GPL-3.0-or-later"
+authors.workspace = true
+repository.workspace = true
+
+[features]
+default = []
+dx12 = ["dep:wgpu"]
+benchmark = []
+
+[dependencies]
+borderless-upscale-core.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+wgpu = { workspace = true, optional = true }
+
+[lints]
+workspace = true

@@ -3,6 +3,9 @@ resolver = "3"
 members = [
     "crates/borderless-core",
     "crates/borderless-native",
+    "crates/borderless-upscale-core",
+    "crates/borderless-upscale-wgpu",
+    "crates/borderless-magpie",
     "crates/borderless-runtime",
     "crates/borderless-cli",
     "crates/borderless-gui",
@@ -33,6 +36,7 @@ tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros", "sync", "
 toml = "1.1.2"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+wgpu = { version = "29.0.3", default-features = false, features = ["dx12", "std", "wgsl"] }
 windows = { git = "https://github.com/microsoft/windows-rs", rev = "db87ba9940e49e84fbacb1fe494ec81a2a7690db", package = "windows", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
@@ -53,8 +57,11 @@ windows-reactor = { git = "https://github.com/microsoft/windows-rs", rev = "db87
 windows-reactor-setup = { git = "https://github.com/microsoft/windows-rs", rev = "db87ba9940e49e84fbacb1fe494ec81a2a7690db", package = "windows-reactor-setup" }
 
 borderless-core = { path = "crates/borderless-core" }
+borderless-magpie = { path = "crates/borderless-magpie" }
 borderless-native = { path = "crates/borderless-native" }
 borderless-runtime = { path = "crates/borderless-runtime" }
+borderless-upscale-core = { path = "crates/borderless-upscale-core" }
+borderless-upscale-wgpu = { path = "crates/borderless-upscale-wgpu" }
 
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "deny"

@@ -82,9 +82,15 @@ Development and verification target Windows/MSVC. Use `cargo check-win`, `cargo 
 
 ## License
 
-This project is licensed under either of:
+The default, non-Magpie crates are licensed under either of:
 
 - Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
 - MIT license ([LICENSE-MIT](LICENSE-MIT))
+
+Magpie-derived scaler crates and builds that enable `magpie-port` or `magpie-wgpu-compare` are
+licensed under GPL-3.0-or-later ([LICENSE-GPL-3.0](LICENSE-GPL-3.0)).
+
+See [docs/licensing/spdx-and-gpl-boundary.md](docs/licensing/spdx-and-gpl-boundary.md) for the crate
+and feature boundary.
 
 Third-party dependency and redistributable notes live in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

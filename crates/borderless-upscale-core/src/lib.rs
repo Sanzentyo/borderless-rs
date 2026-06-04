@@ -65,6 +65,65 @@ pub enum InputBackend {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+pub enum LegacyPresentationApi {
+    #[default]
+    None,
+    Gdi,
+    DirectDraw,
+    Direct3d8,
+    Direct3d9,
+    Glide,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LegacyPresentationStrategy {
+    #[default]
+    None,
+    BorderlessWindow,
+    ProxyPresentation,
+    WrappedPresentation,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LegacyCompatibilityProfile {
+    pub presentation_api: LegacyPresentationApi,
+    pub presentation_strategy: LegacyPresentationStrategy,
+    pub input_backend: InputBackend,
+    pub preserve_aspect_ratio: bool,
+    pub requires_palette_sync: bool,
+    pub force_software_cursor: bool,
+}
+
+impl LegacyCompatibilityProfile {
+    #[must_use]
+    pub const fn inactive() -> Self {
+        Self {
+            presentation_api: LegacyPresentationApi::None,
+            presentation_strategy: LegacyPresentationStrategy::None,
+            input_backend: InputBackend::NoRemap,
+            preserve_aspect_ratio: false,
+            requires_palette_sync: false,
+            force_software_cursor: false,
+        }
+    }
+
+    pub fn validate(&self) -> UpscaleResult<()> {
+        if matches!(
+            self.presentation_strategy,
+            LegacyPresentationStrategy::WrappedPresentation
+        ) && matches!(self.presentation_api, LegacyPresentationApi::None)
+        {
+            return Err(UpscaleError::InvalidPipeline(
+                "wrapped legacy presentation requires a concrete presentation API".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum RendererBackend {
     NativeDirect3d,
     #[default]
@@ -213,5 +272,32 @@ mod tests {
             pipeline.validate(),
             Err(UpscaleError::InvalidPipeline(_))
         ));
+    }
+
+    #[test]
+    fn wrapped_legacy_profile_requires_api() {
+        let profile = LegacyCompatibilityProfile {
+            presentation_strategy: LegacyPresentationStrategy::WrappedPresentation,
+            ..LegacyCompatibilityProfile::inactive()
+        };
+
+        assert!(matches!(
+            profile.validate(),
+            Err(UpscaleError::InvalidPipeline(_))
+        ));
+    }
+
+    #[test]
+    fn directdraw_legacy_profile_accepts_wrapped_presentation() {
+        let profile = LegacyCompatibilityProfile {
+            presentation_api: LegacyPresentationApi::DirectDraw,
+            presentation_strategy: LegacyPresentationStrategy::WrappedPresentation,
+            input_backend: InputBackend::DirectInputShim,
+            preserve_aspect_ratio: true,
+            requires_palette_sync: true,
+            force_software_cursor: true,
+        };
+
+        assert_eq!(profile.validate(), Ok(()));
     }
 }

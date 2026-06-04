@@ -12,6 +12,8 @@ flowchart LR
     Core --> GPL["GPL scaler boundary"]
     GPL --> Magpie["borderless-magpie\nMagpie-compatible port"]
     GPL --> Wgpu["borderless-upscale-wgpu\nDirectX/wgpu comparison"]
+    Core --> Compat["retro compatibility boundary"]
+    Compat --> Legacy["future borderless-compat\nDirectDraw / DirectInput / wrapper path"]
 ```
 
 ## Lanes
@@ -20,7 +22,7 @@ flowchart LR
 | --- | --- | --- | --- |
 | Magpie style | `borderless-magpie` | GPL-3.0-or-later | Capture -> shader/effect graph -> fullscreen host. |
 | IntegerScaler style | `borderless-upscale-core` | MIT OR Apache-2.0 | Source client size, integer scale, crop, and cursor clipping policy. |
-| DxWnd/dxwrapper style | future crate | GPL or separate wrapper license | Legacy API wrapper, DirectInput remap, DirectDraw compatibility. |
+| Retro compatibility | future `borderless-compat` | GPL or separate wrapper license | Legacy API wrapper, DirectInput remap, DirectDraw/GDI/Glide compatibility. |
 
 ## Current ADT boundary
 
@@ -57,11 +59,55 @@ enum InputBackend {
     DirectInputShim,
     RawInputShim,
 }
+
+enum LegacyPresentationApi {
+    None,
+    Gdi,
+    DirectDraw,
+    Direct3d8,
+    Direct3d9,
+    Glide,
+}
+
+enum LegacyPresentationStrategy {
+    None,
+    BorderlessWindow,
+    ProxyPresentation,
+    WrappedPresentation,
+}
 ```
 
 The default build can use these types without linking GPL scaler crates. Enabling `magpie-port`
 pulls in `borderless-magpie`; enabling `magpie-wgpu-compare` additionally pulls in the DirectX/wgpu
 comparison crate.
+
+## Retro compatibility layer
+
+The retro-game path is intentionally separate from the Magpie upscale path. Magpie-compatible code
+answers "how do we scale and present the final image"; the compatibility layer answers "how do we
+make an old presentation or input model produce a reliable image and usable input first".
+
+```mermaid
+flowchart LR
+    Game["legacy game"] --> Api["GDI / DirectDraw / D3D8 / D3D9 / Glide"]
+    Api --> Compat["borderless-compat boundary"]
+    Compat --> Frame["physical-pixel frame"]
+    Compat --> Input["DirectInput / RawInput / cursor policy"]
+    Frame --> Scale["integer / MagpieFX / future renderer"]
+    Input --> Runtime["runtime restore and cleanup"]
+```
+
+The clean-room configuration lives in `borderless-upscale-core` as `LegacyCompatibilityProfile`.
+That keeps profiles, GUI settings, and CLI flags permissively licensed while leaving any wrapper or
+ported compatibility implementation in a dedicated crate. The planned implementation order is:
+
+1. `BorderlessWindow`: use the existing native path for games that only need style/position fixes.
+2. `ProxyPresentation`: capture the legacy client output and present it through the scaler host.
+3. `WrappedPresentation`: interpose old APIs such as DirectDraw or DirectInput only when proxy
+   capture cannot preserve timing, palette, cursor, or exclusive-mode assumptions.
+
+This layer should prefer physical pixels at the Win32 boundary, preserve aspect ratio by default for
+4:3/5:4 games, and keep taskbar/cursor restoration in the runtime cleanup path.
 
 ## Current implementation status
 

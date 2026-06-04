@@ -261,6 +261,9 @@ Behind `wgpu-compare`, `MagpieWgpuDescriptorPlan` converts those backend descrip
 mapping remains explicit: unsupported raw DXGI formats are rejected until a wgpu equivalent is added.
 `MagpieWgpuResourceObjects` creates the corresponding wgpu textures, texture views, constant
 buffers, and samplers, then uses the pass binding layout to assemble `wgpu::BindGroup` objects.
+`MagpieWgpuSourceUploadPlan` converts `MagpieSourceUploadPlan` entries into wgpu texture-copy
+metadata, validates that the DDS payload slice is present, and writes `SOURCE` assets into the
+created texture pool with `Queue::write_texture`.
 `MagpieWgpuBindingLayoutPlan` then converts each pass's CBV/SRV/UAV/sampler handoff into
 `wgpu::BindGroupLayoutEntry` values. Because Magpie's HLSL resources use separate `b`, `t`, `u`, and
 `s` register spaces while wgpu uses one binding namespace per group, the bridge reserves disjoint

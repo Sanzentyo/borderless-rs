@@ -55,6 +55,8 @@ Current ported pieces include:
 - `MagpieWgpuResourceObjects` behind `wgpu-compare`, which creates wgpu textures, texture views,
   constant buffers, and samplers from the backend descriptors and can assemble pass-local bind
   groups from the layout plan.
+- `MagpieWgpuSourceUploadPlan` behind `wgpu-compare`, which validates `SOURCE` DDS payload ranges
+  and writes them into wgpu textures through `Queue::write_texture`.
 - `MagpieWgpuBindingLayoutPlan` behind `wgpu-compare`, which converts each pass's CBV/SRV/UAV
   and sampler resources into wgpu bind group layout entries. HLSL register classes are assigned
   disjoint wgpu binding bases so `b0`, `t0`, `u0`, and `s0` do not collide. The same plan can

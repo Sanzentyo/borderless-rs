@@ -16,6 +16,7 @@ use crate::resources::{
     MagpieConstantBufferBinding, MagpieResourcePass, MagpieResourcePlan,
     MagpieSamplerResourceBinding, MagpieTextureResourceBinding,
 };
+use crate::upload::{MagpieSourceUpload, MagpieSourceUploadPlan};
 use borderless_upscale_core::{UpscaleError, UpscaleResult};
 use std::borrow::Cow;
 
@@ -140,6 +141,17 @@ impl MagpieWgpuResourceObjects {
             binding: binding.binding,
             resource: self.binding_resource(binding)?,
         })
+    }
+
+    pub fn write_source_uploads(
+        &self,
+        queue: &wgpu::Queue,
+        uploads: &MagpieWgpuSourceUploadPlan,
+    ) -> UpscaleResult<()> {
+        uploads
+            .uploads
+            .iter()
+            .try_for_each(|upload| upload.write_to_queue(queue, self))
     }
 
     fn binding_resource<'a>(
@@ -299,6 +311,128 @@ pub struct MagpieWgpuPipelineObjects {
     pub pass_name: String,
     pub shader_module: wgpu::ShaderModule,
     pub compute_pipeline: wgpu::ComputePipeline,
+}
+
+#[derive(Clone, Debug)]
+pub struct MagpieWgpuSourceUploadPlan {
+    pub uploads: Vec<MagpieWgpuSourceUpload>,
+}
+
+impl MagpieWgpuSourceUploadPlan {
+    pub fn from_source_upload_plan(plan: &MagpieSourceUploadPlan) -> UpscaleResult<Self> {
+        let uploads = plan
+            .uploads
+            .iter()
+            .map(MagpieWgpuSourceUpload::from_source_upload)
+            .collect::<UpscaleResult<Vec<_>>>()?;
+
+        Ok(Self { uploads })
+    }
+
+    #[must_use]
+    pub fn upload(&self, texture_name: &str) -> Option<&MagpieWgpuSourceUpload> {
+        self.uploads
+            .iter()
+            .find(|upload| upload.texture_name == texture_name)
+    }
+
+    pub fn write_to_queue(
+        &self,
+        queue: &wgpu::Queue,
+        resources: &MagpieWgpuResourceObjects,
+    ) -> UpscaleResult<()> {
+        resources.write_source_uploads(queue, self)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct MagpieWgpuSourceUpload {
+    pub texture_name: String,
+    pub path: std::path::PathBuf,
+    pub data_offset: usize,
+    pub data_byte_len: usize,
+    pub layout: wgpu::TexelCopyBufferLayout,
+    pub size: wgpu::Extent3d,
+}
+
+impl MagpieWgpuSourceUpload {
+    pub fn from_source_upload(upload: &MagpieSourceUpload) -> UpscaleResult<Self> {
+        let data_byte_len = usize::try_from(upload.byte_len).map_err(|_| {
+            invalid_pipeline(format!(
+                "source texture {} upload byte length does not fit usize",
+                upload.texture_name
+            ))
+        })?;
+
+        Ok(Self {
+            texture_name: upload.texture_name.clone(),
+            path: upload.path.clone(),
+            data_offset: upload.data_offset,
+            data_byte_len,
+            layout: wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(upload.row_pitch),
+                rows_per_image: Some(upload.size.height),
+            },
+            size: wgpu::Extent3d {
+                width: upload.size.width,
+                height: upload.size.height,
+                depth_or_array_layers: 1,
+            },
+        })
+    }
+
+    pub fn read_data(&self) -> UpscaleResult<Vec<u8>> {
+        let bytes = std::fs::read(&self.path).map_err(|err| {
+            UpscaleError::BackendUnavailable(format!(
+                "failed to read source texture {}: {err}",
+                self.path.display()
+            ))
+        })?;
+        let end = self
+            .data_offset
+            .checked_add(self.data_byte_len)
+            .ok_or_else(|| {
+                invalid_pipeline(format!(
+                    "source texture {} upload byte range overflowed",
+                    self.texture_name
+                ))
+            })?;
+
+        bytes
+            .get(self.data_offset..end)
+            .map(<[u8]>::to_vec)
+            .ok_or_else(|| {
+                invalid_pipeline(format!(
+                    "source texture {} data is shorter than planned upload",
+                    self.texture_name
+                ))
+            })
+    }
+
+    pub fn write_to_queue(
+        &self,
+        queue: &wgpu::Queue,
+        resources: &MagpieWgpuResourceObjects,
+    ) -> UpscaleResult<()> {
+        let texture = resources.texture(&self.texture_name).ok_or_else(|| {
+            invalid_pipeline(format!("missing wgpu source texture {}", self.texture_name))
+        })?;
+        let data = self.read_data()?;
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &texture.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &data,
+            self.layout,
+            self.size,
+        );
+
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1302,7 +1436,9 @@ mod tests {
     use crate::plan::MagpieRenderPlan;
     use crate::plan::MagpieTextureFormat;
     use crate::resources::MagpieResourcePlan;
+    use crate::upload::{MagpieSourceUpload, MagpieSourceUploadPlan};
     use borderless_upscale_core::FrameSize;
+    use std::fs;
     use std::path::PathBuf;
 
     #[test]
@@ -1664,6 +1800,48 @@ void Pass2(uint2 pos) { OUTPUT[pos] = tex1[pos]; }
         assert_eq!(execution.pass(2).unwrap().group_count, [80, 60, 1]);
     }
 
+    #[test]
+    fn maps_source_upload_plan_to_wgpu_copy_layout_and_payload() {
+        let path = unique_temp_file("wgpu-source-upload.dds");
+        let payload = [1_u8, 2, 3, 4, 5, 6, 7, 8];
+        fs::write(&path, [b"HEAD".as_slice(), payload.as_slice()].concat()).unwrap();
+        let upload = source_upload(path.clone(), 4, 8);
+        let plan = MagpieSourceUploadPlan {
+            uploads: vec![upload],
+        };
+
+        let wgpu_uploads = MagpieWgpuSourceUploadPlan::from_source_upload_plan(&plan).unwrap();
+        let wgpu_upload = wgpu_uploads.upload("SOURCE").unwrap();
+
+        assert_eq!(wgpu_upload.texture_name, "SOURCE");
+        assert_eq!(wgpu_upload.data_offset, 4);
+        assert_eq!(wgpu_upload.data_byte_len, 8);
+        assert_eq!(wgpu_upload.layout.offset, 0);
+        assert_eq!(wgpu_upload.layout.bytes_per_row, Some(8));
+        assert_eq!(wgpu_upload.layout.rows_per_image, Some(1));
+        assert_eq!(wgpu_upload.size.width, 2);
+        assert_eq!(wgpu_upload.size.height, 1);
+        assert_eq!(wgpu_upload.size.depth_or_array_layers, 1);
+        assert_eq!(wgpu_upload.read_data().unwrap(), payload);
+
+        fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn rejects_short_source_upload_payload() {
+        let path = unique_temp_file("wgpu-source-upload-short.dds");
+        fs::write(&path, b"HEAD1234").unwrap();
+        let upload =
+            MagpieWgpuSourceUpload::from_source_upload(&source_upload(path.clone(), 4, 8)).unwrap();
+
+        assert!(matches!(
+            upload.read_data(),
+            Err(UpscaleError::InvalidPipeline(_))
+        ));
+
+        fs::remove_file(path).unwrap();
+    }
+
     fn texture_descriptor() -> MagpieBackendTextureDescriptor {
         MagpieBackendTextureDescriptor {
             name: "OUTPUT".to_owned(),
@@ -1706,5 +1884,21 @@ void Pass2(uint2 pos) { OUTPUT[pos] = tex1[pos]; }
             includes: Vec::new(),
             source_assets: Vec::new(),
         }
+    }
+
+    fn source_upload(path: PathBuf, data_offset: usize, byte_len: u64) -> MagpieSourceUpload {
+        MagpieSourceUpload {
+            texture_name: "SOURCE".to_owned(),
+            path,
+            size: FrameSize::new(2, 1).unwrap(),
+            format: texture_descriptor().format,
+            data_offset,
+            row_pitch: 8,
+            byte_len,
+        }
+    }
+
+    fn unique_temp_file(name: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("borderless-magpie-{}-{name}", std::process::id()))
     }
 }

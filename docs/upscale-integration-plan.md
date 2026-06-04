@@ -63,6 +63,30 @@ The default build can use these types without linking GPL scaler crates. Enablin
 pulls in `borderless-magpie`; enabling `magpie-wgpu-compare` additionally pulls in the DirectX/wgpu
 comparison crate.
 
+## Current implementation status
+
+`borderless-magpie` now owns the GPL-only Magpie-compatible path. The first concrete slice is a
+MagpieFX directive parser that keeps effect metadata separate from the shader body:
+
+```mermaid
+flowchart LR
+    File["*.hlsl MagpieFX file"] --> Parser["parse_magpiefx"]
+    Parser --> Metadata["VERSION / USE / CAPABILITY\nPARAMETER / TEXTURE / SAMPLER / PASS"]
+    Parser --> Shader["HLSL source without //! directives"]
+    Metadata --> Graph["effect graph and renderer planning"]
+    Shader --> Compiler["future DirectX shader compiler path"]
+```
+
+The parser currently recognizes these directive groups:
+
+- global: `MAGPIE EFFECT`, `VERSION`, `USE`, `CAPABILITY`;
+- resources: `PARAMETER`, `TEXTURE`, `SAMPLER`;
+- passes: `PASS`, `STYLE`, `IN`, `OUT`, `BLOCK_SIZE`, `NUM_THREADS`.
+
+Validation requires `VERSION`, at least one texture, at least one pass, and explicit `INPUT` and
+`OUTPUT` texture declarations. The native DirectX renderer, capture path, and shader compilation
+are still separate follow-up slices.
+
 ## Renderer comparison rule
 
 The Magpie-compatible native DirectX path is the reference. The wgpu path is eligible to replace it
@@ -93,4 +117,3 @@ Adoption criterion for the wgpu path:
 4. Add shader assets with per-file SPDX and source attribution.
 5. Add wgpu/DirectX comparison path behind `magpie-wgpu-compare`.
 6. Adopt wgpu only after benchmark parity is demonstrated.
-

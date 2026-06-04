@@ -55,6 +55,9 @@ Current ported pieces include:
   disjoint wgpu binding bases so `b0`, `t0`, `u0`, and `s0` do not collide. The same plan can
   create pass-local `wgpu::BindGroupLayout` and `wgpu::PipelineLayout` objects once a renderer owns
   a `wgpu::Device`.
+- `MagpieWgpuShaderPlan` behind `wgpu-compare`, which accepts WGSL pass sources produced by a
+  future HLSL-to-WGSL translation layer and creates pass-local shader modules and compute pipelines
+  against the explicit layout objects.
 
 Bundled shader/effect assets are intentionally feature-gated and must carry per-file SPDX headers
 from their original source. Some Magpie effect files have their own notices, so they should not be

@@ -16,6 +16,7 @@ use crate::resources::{
     MagpieSamplerResourceBinding, MagpieTextureResourceBinding,
 };
 use borderless_upscale_core::{UpscaleError, UpscaleResult};
+use std::borrow::Cow;
 
 pub const MAGPIE_WGPU_CONSTANT_BINDING_BASE: u32 = 0;
 pub const MAGPIE_WGPU_SHADER_RESOURCE_BINDING_BASE: u32 = 32;
@@ -196,6 +197,107 @@ pub struct MagpieWgpuPassBindGroup {
     pub pass_index: u32,
     pub pass_name: String,
     pub bind_group: wgpu::BindGroup,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MagpieWgpuShaderPlan {
+    pub passes: Vec<MagpieWgpuShaderPass>,
+}
+
+impl MagpieWgpuShaderPlan {
+    pub fn from_wgsl_passes(
+        layouts: &MagpieWgpuBindingLayoutPlan,
+        passes: Vec<MagpieWgpuShaderPass>,
+    ) -> UpscaleResult<Self> {
+        passes
+            .iter()
+            .try_for_each(|pass| validate_wgsl_pass(layouts, pass))?;
+
+        Ok(Self { passes })
+    }
+
+    #[must_use]
+    pub fn pass(&self, pass_index: u32) -> Option<&MagpieWgpuShaderPass> {
+        self.passes
+            .iter()
+            .find(|pass| pass.pass_index == pass_index)
+    }
+
+    pub fn create_pipeline_objects(
+        &self,
+        device: &wgpu::Device,
+        layouts: &[MagpieWgpuPassLayoutObjects],
+    ) -> UpscaleResult<Vec<MagpieWgpuPipelineObjects>> {
+        self.passes
+            .iter()
+            .map(|pass| pass.create_pipeline_objects(device, layouts))
+            .collect()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MagpieWgpuShaderPass {
+    pub pass_index: u32,
+    pub pass_name: String,
+    pub entry_point: String,
+    pub wgsl_source: String,
+}
+
+impl MagpieWgpuShaderPass {
+    #[must_use]
+    pub fn new(
+        pass_index: u32,
+        pass_name: impl Into<String>,
+        entry_point: impl Into<String>,
+        wgsl_source: impl Into<String>,
+    ) -> Self {
+        Self {
+            pass_index,
+            pass_name: pass_name.into(),
+            entry_point: entry_point.into(),
+            wgsl_source: wgsl_source.into(),
+        }
+    }
+
+    #[must_use]
+    pub fn shader_module_descriptor(&self) -> wgpu::ShaderModuleDescriptor<'_> {
+        wgpu::ShaderModuleDescriptor {
+            label: Some(self.pass_name.as_str()),
+            source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(self.wgsl_source.as_str())),
+        }
+    }
+
+    pub fn create_pipeline_objects(
+        &self,
+        device: &wgpu::Device,
+        layouts: &[MagpieWgpuPassLayoutObjects],
+    ) -> UpscaleResult<MagpieWgpuPipelineObjects> {
+        let layout = layout_object_by_pass(layouts, self.pass_index, &self.pass_name)?;
+        let shader_module = device.create_shader_module(self.shader_module_descriptor());
+        let compute_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some(self.pass_name.as_str()),
+            layout: Some(&layout.pipeline_layout),
+            module: &shader_module,
+            entry_point: Some(self.entry_point.as_str()),
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+            cache: None,
+        });
+
+        Ok(MagpieWgpuPipelineObjects {
+            pass_index: self.pass_index,
+            pass_name: self.pass_name.clone(),
+            shader_module,
+            compute_pipeline,
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct MagpieWgpuPipelineObjects {
+    pub pass_index: u32,
+    pub pass_name: String,
+    pub shader_module: wgpu::ShaderModule,
+    pub compute_pipeline: wgpu::ComputePipeline,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -409,6 +511,57 @@ fn write_initial_dwords(buffer: &wgpu::Buffer, byte_len: usize, dwords: &[u32]) 
         .for_each(|(chunk, dword)| chunk.copy_from_slice(&dword.to_ne_bytes()));
     view.slice(..byte_count).copy_from_slice(&bytes);
     drop(view);
+}
+
+fn validate_wgsl_pass(
+    layouts: &MagpieWgpuBindingLayoutPlan,
+    pass: &MagpieWgpuShaderPass,
+) -> UpscaleResult<()> {
+    let layout = layouts.pass(pass.pass_index).ok_or_else(|| {
+        invalid_pipeline(format!(
+            "missing wgpu binding layout for pass {}",
+            pass.pass_index
+        ))
+    })?;
+    if layout.pass_name != pass.pass_name {
+        return Err(invalid_pipeline(format!(
+            "wgpu shader pass {} name {} does not match layout {}",
+            pass.pass_index, pass.pass_name, layout.pass_name
+        )));
+    }
+    if pass.entry_point.trim().is_empty() {
+        return Err(invalid_pipeline(format!(
+            "wgpu shader pass {} has an empty entry point",
+            pass.pass_index
+        )));
+    }
+    if pass.wgsl_source.trim().is_empty() {
+        return Err(invalid_pipeline(format!(
+            "wgpu shader pass {} has empty WGSL source",
+            pass.pass_index
+        )));
+    }
+    Ok(())
+}
+
+fn layout_object_by_pass<'a>(
+    layouts: &'a [MagpieWgpuPassLayoutObjects],
+    pass_index: u32,
+    pass_name: &str,
+) -> UpscaleResult<&'a MagpieWgpuPassLayoutObjects> {
+    let layout = layouts
+        .iter()
+        .find(|layout| layout.pass_index == pass_index)
+        .ok_or_else(|| {
+            invalid_pipeline(format!("missing wgpu layout object for pass {pass_index}"))
+        })?;
+    if layout.pass_name != pass_name {
+        return Err(invalid_pipeline(format!(
+            "wgpu layout object pass {pass_index} name {} does not match shader {pass_name}",
+            layout.pass_name
+        )));
+    }
+    Ok(layout)
 }
 
 fn wgpu_texture_format(format: &MagpieTextureFormat) -> UpscaleResult<wgpu::TextureFormat> {
@@ -804,6 +957,54 @@ void Pass2(uint2 pos) { OUTPUT[pos] = tex1[pos]; }
         assert_eq!(descriptor.label, Some("Copy"));
         assert_eq!(descriptor.entries.len(), pass.entries.len());
         assert_eq!(descriptor.entries[0].binding, pass.entries[0].binding);
+    }
+
+    #[test]
+    fn maps_wgsl_passes_to_shader_module_descriptors() {
+        let package = package(
+            r"
+//!MAGPIE EFFECT
+//!VERSION 4
+//!TEXTURE
+Texture2D INPUT;
+//!TEXTURE
+Texture2D OUTPUT;
+//!PASS 1
+//!IN INPUT
+//!OUT OUTPUT
+//!BLOCK_SIZE 8
+//!NUM_THREADS 64
+void Pass1(uint2 pos) { OUTPUT[pos] = INPUT[pos]; }
+",
+        );
+        let resources = MagpieResourcePlan::from_package(&package).unwrap();
+        let layouts = MagpieWgpuBindingLayoutPlan::from_resource_plan(&resources).unwrap();
+        let shader_pass = MagpieWgpuShaderPass::new(
+            1,
+            "Pass 1",
+            "main",
+            "@compute @workgroup_size(8, 8, 1) fn main() {}",
+        );
+
+        let shaders = MagpieWgpuShaderPlan::from_wgsl_passes(&layouts, vec![shader_pass]).unwrap();
+        let descriptor = shaders.pass(1).unwrap().shader_module_descriptor();
+
+        assert_eq!(descriptor.label, Some("Pass 1"));
+        assert!(matches!(
+            descriptor.source,
+            wgpu::ShaderSource::Wgsl(source) if source.contains("@compute")
+        ));
+    }
+
+    #[test]
+    fn rejects_wgsl_pass_without_matching_layout() {
+        let layouts = MagpieWgpuBindingLayoutPlan { passes: Vec::new() };
+        let shader_pass = MagpieWgpuShaderPass::new(1, "Pass 1", "main", "fn main() {}");
+
+        assert!(matches!(
+            MagpieWgpuShaderPlan::from_wgsl_passes(&layouts, vec![shader_pass]),
+            Err(UpscaleError::InvalidPipeline(_))
+        ));
     }
 
     fn texture_descriptor() -> MagpieBackendTextureDescriptor {

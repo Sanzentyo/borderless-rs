@@ -32,12 +32,8 @@ impl MagpieCompilePlan {
             .iter()
             .enumerate()
             .map(|(index, pass)| {
-                shader_job(
-                    index + 1,
-                    pass,
-                    &package.compiler_source,
-                    &package.effect.capabilities,
-                )
+                let base_source = package.compiler_source_for_pass(index + 1)?;
+                shader_job(index + 1, pass, &base_source, &package.effect.capabilities)
             })
             .collect::<UpscaleResult<Vec<_>>>()?;
 
@@ -396,6 +392,9 @@ void Pass1(uint2 blockStart, uint3 threadId) {}
             effect,
             render_plan,
             compiler_source: source.to_owned(),
+            compiler_prelude_source: String::new(),
+            compiler_common_source: String::new(),
+            compiler_pass_sources: vec![source.to_owned()],
             includes: Vec::new(),
             source_assets: Vec::new(),
         }

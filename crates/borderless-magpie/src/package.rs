@@ -15,6 +15,9 @@ pub struct MagpieEffectPackage {
     pub effect: MagpieFx,
     pub render_plan: MagpieRenderPlan,
     pub compiler_source: String,
+    pub compiler_prelude_source: String,
+    pub compiler_common_source: String,
+    pub compiler_pass_sources: Vec<String>,
     pub includes: Vec<MagpieInclude>,
     pub source_assets: Vec<MagpieSourceAsset>,
 }
@@ -37,6 +40,15 @@ impl MagpieEffectPackage {
         let source_root = path.parent().unwrap_or_else(|| Path::new("."));
         let mut resolver = IncludeResolver::new();
         let compiler_source = resolver.expand_source(&effect.hlsl_source, source_root)?;
+        let compiler_prelude_source =
+            IncludeResolver::new().expand_source(&effect.prelude_source, source_root)?;
+        let compiler_common_source =
+            IncludeResolver::new().expand_source(&effect.common_source, source_root)?;
+        let compiler_pass_sources = effect
+            .passes
+            .iter()
+            .map(|pass| IncludeResolver::new().expand_source(&pass.source, source_root))
+            .collect::<UpscaleResult<Vec<_>>>()?;
         let source_assets = render_plan
             .textures
             .iter()
@@ -57,9 +69,25 @@ impl MagpieEffectPackage {
             effect,
             render_plan,
             compiler_source,
+            compiler_prelude_source,
+            compiler_common_source,
+            compiler_pass_sources,
             includes: resolver.includes,
             source_assets,
         })
+    }
+
+    pub fn compiler_source_for_pass(&self, pass_index: usize) -> UpscaleResult<String> {
+        let pass_source = self
+            .compiler_pass_sources
+            .get(pass_index.saturating_sub(1))
+            .ok_or_else(|| {
+                invalid_pipeline(format!("missing compiler source for pass {pass_index}"))
+            })?;
+        Ok(format!(
+            "{}\n{}\n{}",
+            self.compiler_prelude_source, self.compiler_common_source, pass_source
+        ))
     }
 }
 
@@ -212,6 +240,13 @@ float4 Pass1() { return Common(); }
         .unwrap();
 
         assert!(package.compiler_source.contains("float Common()"));
+        assert!(package.compiler_prelude_source.contains("float Common()"));
+        assert!(
+            package
+                .compiler_source_for_pass(1)
+                .unwrap()
+                .contains("Pass1")
+        );
         assert!(!package.compiler_source.contains("#include"));
         assert_eq!(package.includes.len(), 1);
         assert_eq!(package.source_assets.len(), 1);

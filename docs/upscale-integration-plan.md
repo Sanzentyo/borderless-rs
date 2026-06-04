@@ -166,6 +166,11 @@ and render-plans the effect assets as a compatibility gate.
 `MagpieRenderPlan`, the include-expanded HLSL compiler source, the resolved include list, and the
 resolved `SOURCE` asset list.
 
+The parser now keeps compiler-relevant HLSL separated into prelude, `COMMON`, and per-`PASS` source
+blocks. `MagpieEffectPackage::compiler_source_for_pass` uses those blocks instead of the full effect
+file, so future resource declaration/cbuffer generation can mirror Magpie's pass-source generation
+without duplicating parsed `TEXTURE` or `SAMPLER` declarations.
+
 `MagpieCompilePlan` derives per-pass shader jobs from a package. It follows Magpie's compute-shader
 compile convention: every pass compiles through the `__M` entry point with `cs_5_0`, including
 PS-style passes, and carries Magpie macros such as `MP_BLOCK_WIDTH`, `MP_NUM_THREADS_X`, `MP_PS_STYLE`,

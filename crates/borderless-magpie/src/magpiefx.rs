@@ -18,6 +18,8 @@ pub struct MagpieFx {
     pub samplers: Vec<MagpieFxSampler>,
     pub passes: Vec<MagpieFxPass>,
     pub hlsl_source: String,
+    pub prelude_source: String,
+    pub common_source: String,
 }
 
 impl MagpieFx {
@@ -141,6 +143,7 @@ pub struct MagpieFxPass {
     pub outputs: Vec<String>,
     pub block_size: Option<Vec<u32>>,
     pub num_threads: Option<Vec<u32>>,
+    pub source: String,
 }
 
 impl Default for MagpieFxPass {
@@ -153,6 +156,7 @@ impl Default for MagpieFxPass {
             outputs: Vec::new(),
             block_size: None,
             num_threads: None,
+            source: String::new(),
         }
     }
 }
@@ -190,6 +194,7 @@ impl From<MagpieFxPassStyle> for EffectPassStyle {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Block {
+    Common,
     Parameter,
     Texture,
     Sampler,
@@ -217,11 +222,14 @@ pub fn parse_magpiefx(source: &str) -> UpscaleResult<MagpieFx> {
             current = apply_directive(directive.trim(), current, &mut effect)?;
         } else if let Some(block) = current {
             apply_declaration(trimmed, block, &mut effect);
+            append_block_source(line, block, &mut effect);
             effect.hlsl_source.push_str(line);
             effect.hlsl_source.push('\n');
         } else if !trimmed.starts_with("//") {
             effect.hlsl_source.push_str(line);
             effect.hlsl_source.push('\n');
+            effect.prelude_source.push_str(line);
+            effect.prelude_source.push('\n');
         }
 
         if trimmed == "//!MAGPIE EFFECT" {
@@ -300,7 +308,7 @@ fn apply_global_directive(
             effect.sort_name = Some(value.to_owned());
             Ok(DirectiveOutcome::Applied(current))
         }
-        "COMMON" => Ok(DirectiveOutcome::Applied(None)),
+        "COMMON" => Ok(DirectiveOutcome::Applied(Some(Block::Common))),
         _ => Ok(DirectiveOutcome::Ignored),
     }
 }
@@ -489,6 +497,7 @@ fn apply_pass_directive(
 
 fn apply_declaration(line: &str, block: Block, effect: &mut MagpieFx) {
     match block {
+        Block::Common | Block::Pass => {}
         Block::Parameter => {
             if let Some(parameter) = effect.parameters.last_mut()
                 && parameter.symbol.is_empty()
@@ -513,7 +522,22 @@ fn apply_declaration(line: &str, block: Block, effect: &mut MagpieFx) {
                 sampler.name = symbol;
             }
         }
-        Block::Pass => {}
+    }
+}
+
+fn append_block_source(line: &str, block: Block, effect: &mut MagpieFx) {
+    match block {
+        Block::Common => {
+            effect.common_source.push_str(line);
+            effect.common_source.push('\n');
+        }
+        Block::Pass => {
+            if let Some(pass) = effect.passes.last_mut() {
+                pass.source.push_str(line);
+                pass.source.push('\n');
+            }
+        }
+        Block::Parameter | Block::Texture | Block::Sampler => {}
     }
 }
 
@@ -652,6 +676,9 @@ void Pass1(uint2 blockStart, uint3 threadId) {}
         assert_eq!(effect.parameters[0].label.as_deref(), Some("Sharpness"));
         assert_eq!(effect.textures[2].source.as_deref(), Some("Lut.dds"));
         assert!(effect.hlsl_source.contains("float CommonValue()"));
+        assert!(effect.common_source.contains("float CommonValue()"));
+        assert!(effect.passes[0].source.contains("void Pass1"));
+        assert!(!effect.passes[0].source.contains("Texture2D INPUT"));
         assert_eq!(effect.passes[0].description.as_deref(), Some("Setup"));
         assert_eq!(effect.passes[0].block_size.as_deref(), Some(&[16, 8][..]));
         assert_eq!(effect.passes[0].num_threads.as_deref(), Some(&[64, 4][..]));

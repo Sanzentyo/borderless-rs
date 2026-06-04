@@ -117,7 +117,7 @@ MagpieFX directive parser that keeps effect metadata separate from the shader bo
 ```mermaid
 flowchart LR
     File["*.hlsl MagpieFX file"] --> Parser["parse_magpiefx"]
-    Parser --> Metadata["VERSION / USE / CAPABILITY\nPARAMETER / TEXTURE / SAMPLER / PASS"]
+    Parser --> Metadata["VERSION / SORT_NAME / USE / CAPABILITY\nPARAMETER / TEXTURE / SAMPLER / COMMON / PASS"]
     Parser --> Shader["HLSL source without //! directives"]
     Metadata --> Graph["effect graph and renderer planning"]
     Shader --> Compiler["future DirectX shader compiler path"]
@@ -125,13 +125,18 @@ flowchart LR
 
 The parser currently recognizes these directive groups:
 
-- global: `MAGPIE EFFECT`, `VERSION`, `USE`, `CAPABILITY`;
-- resources: `PARAMETER`, `TEXTURE`, `SAMPLER`;
-- passes: `PASS`, `STYLE`, `IN`, `OUT`, `BLOCK_SIZE`, `NUM_THREADS`.
+- global: `MAGPIE EFFECT`, `VERSION`, `SORT_NAME`, `USE`, `CAPABILITY`, `COMMON`;
+- resources: `PARAMETER`, `LABEL`, `DEFAULT`, `MIN`, `MAX`, `STEP`, `TEXTURE`, `WIDTH`,
+  `HEIGHT`, `FORMAT`, `SOURCE`, `SAMPLER`, `FILTER`;
+- passes: `PASS`, `DESC`, `STYLE`, `IN`, `OUT`, `BLOCK_SIZE`, `NUM_THREADS`.
 
 Validation requires `VERSION`, at least one texture, at least one pass, and explicit `INPUT` and
 `OUTPUT` texture declarations. The native DirectX renderer, capture path, and shader compilation
 are still separate follow-up slices.
+
+The parser output can now be converted into `EffectGraph`, preserving pass style, inputs, outputs,
+LUT/source texture references, compute block sizes, thread counts, and pass descriptions. That graph
+is the handoff point for both the native DirectX renderer path and the later wgpu comparison path.
 
 ## Renderer comparison rule
 

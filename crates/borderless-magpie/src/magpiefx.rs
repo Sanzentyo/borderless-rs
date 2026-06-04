@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::effect::{EffectGraph, EffectPass, EffectPassStyle, EffectSource, MagpieEffect};
 use borderless_upscale_core::{UpscaleError, UpscaleResult};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -7,6 +8,7 @@ use std::path::Path;
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MagpieFx {
     pub version: u32,
+    pub sort_name: Option<String>,
     pub uses: Vec<String>,
     pub capabilities: Vec<String>,
     pub parameters: Vec<MagpieFxParameter>,
@@ -45,6 +47,35 @@ impl MagpieFx {
         }
         Ok(())
     }
+
+    pub fn to_effect(
+        &self,
+        name: impl Into<String>,
+        source: EffectSource,
+    ) -> UpscaleResult<MagpieEffect> {
+        self.validate()?;
+        let effect = MagpieEffect {
+            name: name.into(),
+            source,
+            passes: self
+                .passes
+                .iter()
+                .map(MagpieFxPass::to_effect_pass)
+                .collect(),
+        };
+        effect.validate()?;
+        Ok(effect)
+    }
+
+    pub fn to_effect_graph(
+        &self,
+        name: impl Into<String>,
+        source: EffectSource,
+    ) -> UpscaleResult<EffectGraph> {
+        let graph = EffectGraph::new().with_effect(self.to_effect(name, source)?);
+        graph.validate()?;
+        Ok(graph)
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -63,6 +94,7 @@ pub struct MagpieFxTexture {
     pub width: Option<String>,
     pub height: Option<String>,
     pub format: Option<String>,
+    pub source: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -101,6 +133,7 @@ pub enum MagpieFxSamplerAddress {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MagpieFxPass {
     pub index: u32,
+    pub description: Option<String>,
     pub style: MagpieFxPassStyle,
     pub inputs: Vec<String>,
     pub outputs: Vec<String>,
@@ -112,6 +145,7 @@ impl Default for MagpieFxPass {
     fn default() -> Self {
         Self {
             index: 0,
+            description: None,
             style: MagpieFxPassStyle::Compute,
             inputs: Vec::new(),
             outputs: Vec::new(),
@@ -121,12 +155,35 @@ impl Default for MagpieFxPass {
     }
 }
 
+impl MagpieFxPass {
+    #[must_use]
+    pub fn to_effect_pass(&self) -> EffectPass {
+        EffectPass::new(format!("Pass{}", self.index), 1, 1).with_shader_metadata(
+            self.description.clone(),
+            self.style.into(),
+            self.inputs.clone(),
+            self.outputs.clone(),
+            self.block_size.clone(),
+            self.num_threads.clone(),
+        )
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MagpieFxPassStyle {
     PixelShader,
     #[default]
     Compute,
+}
+
+impl From<MagpieFxPassStyle> for EffectPassStyle {
+    fn from(value: MagpieFxPassStyle) -> Self {
+        match value {
+            MagpieFxPassStyle::PixelShader => Self::PixelShader,
+            MagpieFxPassStyle::Compute => Self::Compute,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -237,6 +294,11 @@ fn apply_global_directive(
             extend_csv(&mut effect.capabilities, value);
             Ok(DirectiveOutcome::Applied(current))
         }
+        "SORT_NAME" => {
+            effect.sort_name = Some(value.to_owned());
+            Ok(DirectiveOutcome::Applied(current))
+        }
+        "COMMON" => Ok(DirectiveOutcome::Applied(None)),
         _ => Ok(DirectiveOutcome::Ignored),
     }
 }
@@ -305,6 +367,10 @@ fn apply_texture_directive(
         }
         "FORMAT" => {
             set_last_texture(effect, |texture| texture.format = Some(value.to_owned()));
+            DirectiveOutcome::Applied(current)
+        }
+        "SOURCE" => {
+            set_last_texture(effect, |texture| texture.source = Some(value.to_owned()));
             DirectiveOutcome::Applied(current)
         }
         _ => DirectiveOutcome::Ignored,
@@ -382,6 +448,12 @@ fn apply_pass_directive(
                 } else {
                     MagpieFxPassStyle::Compute
                 };
+            }
+            Ok(current)
+        }
+        "DESC" => {
+            if let Some(pass) = effect.passes.last_mut() {
+                pass.description = Some(value.to_owned());
             }
             Ok(current)
         }
@@ -520,10 +592,31 @@ float4 Pass1(float2 pos) {
     }
 
     #[test]
+    fn converts_magpiefx_to_effect_graph() {
+        let effect = parse_magpiefx(NEAREST).unwrap();
+        let graph = effect
+            .to_effect_graph(
+                "nearest",
+                EffectSource::HlslSource {
+                    source: effect.hlsl_source.clone(),
+                },
+            )
+            .unwrap();
+
+        let nearest = &graph.effects()[0];
+        assert_eq!(nearest.name, "nearest");
+        assert_eq!(nearest.passes[0].name, "Pass1");
+        assert_eq!(nearest.passes[0].style, EffectPassStyle::PixelShader);
+        assert_eq!(nearest.passes[0].inputs, ["INPUT"]);
+        assert_eq!(nearest.passes[0].outputs, ["OUTPUT"]);
+    }
+
+    #[test]
     fn parses_parameters_and_compute_pass_sizes() {
         let source = r"
 //!MAGPIE EFFECT
 //!VERSION 4
+//!SORT_NAME Test_Effect
 //!PARAMETER
 //!LABEL Sharpness
 //!DEFAULT 0.4
@@ -535,7 +628,14 @@ float sharpness;
 Texture2D INPUT;
 //!TEXTURE
 Texture2D OUTPUT;
+//!TEXTURE
+//!SOURCE Lut.dds
+//!FORMAT R16G16B16A16_FLOAT
+Texture2D LUT;
+//!COMMON
+float CommonValue() { return 1; }
 //!PASS 1
+//!DESC Setup
 //!IN INPUT
 //!OUT OUTPUT
 //!BLOCK_SIZE 16, 8
@@ -545,8 +645,12 @@ void Pass1(uint2 blockStart, uint3 threadId) {}
 
         let effect = parse_magpiefx(source).unwrap();
 
+        assert_eq!(effect.sort_name.as_deref(), Some("Test_Effect"));
         assert_eq!(effect.parameters[0].symbol, "sharpness");
         assert_eq!(effect.parameters[0].label.as_deref(), Some("Sharpness"));
+        assert_eq!(effect.textures[2].source.as_deref(), Some("Lut.dds"));
+        assert!(effect.hlsl_source.contains("float CommonValue()"));
+        assert_eq!(effect.passes[0].description.as_deref(), Some("Setup"));
         assert_eq!(effect.passes[0].block_size.as_deref(), Some(&[16, 8][..]));
         assert_eq!(effect.passes[0].num_threads.as_deref(), Some(&[64, 4][..]));
     }

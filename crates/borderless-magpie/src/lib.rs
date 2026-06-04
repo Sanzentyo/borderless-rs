@@ -6,7 +6,7 @@ pub mod effect;
 pub mod magpiefx;
 pub mod profile;
 
-pub use effect::{EffectGraph, EffectPass, EffectSource, MagpieEffect};
+pub use effect::{EffectGraph, EffectPass, EffectPassStyle, EffectSource, MagpieEffect};
 pub use magpiefx::{
     MagpieFx, MagpieFxParameter, MagpieFxPass, MagpieFxPassStyle, MagpieFxSampler,
     MagpieFxSamplerAddress, MagpieFxSamplerFilter, MagpieFxTexture, parse_magpiefx,

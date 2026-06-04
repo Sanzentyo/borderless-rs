@@ -32,14 +32,29 @@ impl MagpieEffect {
 pub enum EffectSource {
     BuiltIn { id: String },
     HlslFile { relative_path: String },
+    HlslSource { source: String },
     WgslFile { relative_path: String },
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EffectPassStyle {
+    PixelShader,
+    #[default]
+    Compute,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EffectPass {
     pub name: String,
+    pub description: Option<String>,
     pub scale_num: u32,
     pub scale_den: u32,
+    pub style: EffectPassStyle,
+    pub inputs: Vec<String>,
+    pub outputs: Vec<String>,
+    pub block_size: Option<Vec<u32>>,
+    pub num_threads: Option<Vec<u32>>,
 }
 
 impl EffectPass {
@@ -47,9 +62,34 @@ impl EffectPass {
     pub fn new(name: impl Into<String>, scale_num: u32, scale_den: u32) -> Self {
         Self {
             name: name.into(),
+            description: None,
             scale_num: scale_num.max(1),
             scale_den: scale_den.max(1),
+            style: EffectPassStyle::Compute,
+            inputs: Vec::new(),
+            outputs: Vec::new(),
+            block_size: None,
+            num_threads: None,
         }
+    }
+
+    #[must_use]
+    pub fn with_shader_metadata(
+        mut self,
+        description: Option<String>,
+        style: EffectPassStyle,
+        inputs: impl IntoIterator<Item = String>,
+        outputs: impl IntoIterator<Item = String>,
+        block_size: Option<Vec<u32>>,
+        num_threads: Option<Vec<u32>>,
+    ) -> Self {
+        self.description = description;
+        self.style = style;
+        self.inputs = inputs.into_iter().collect();
+        self.outputs = outputs.into_iter().collect();
+        self.block_size = block_size;
+        self.num_threads = num_threads;
+        self
     }
 }
 

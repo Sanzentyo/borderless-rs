@@ -240,6 +240,11 @@ number, byte size, channel count, component class, normalized/signed/sRGB flags.
 values are preserved but do not claim a byte layout until the renderer path explicitly supports
 them.
 
+`MagpieSourceUploadPlan` prepares DDS `SOURCE` texture uploads from the allocation plan. It records
+the file path, data offset after the DDS/DX10 headers, row pitch, byte size, and format metadata for
+known uncompressed layouts; unknown DXGI layouts are kept as metadata but rejected for upload until a
+renderer path explicitly implements them.
+
 `MagpieResourcePlan` is the renderer handoff shape for the next DirectX/wgpu slice. It combines the
 per-pass compile jobs, dispatch groups, CB1/optional CB2 bindings, SRV/UAV texture bindings, and
 sampler descriptors without depending on a concrete D3D or wgpu API. That gives both renderer paths

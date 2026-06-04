@@ -17,6 +17,7 @@ pub mod package;
 pub mod plan;
 pub mod profile;
 pub mod resources;
+pub mod upload;
 
 pub use allocation::{MagpieTextureAllocation, MagpieTextureAllocationPlan, MagpieTextureUsage};
 pub use compiled::{MagpieCompiledEffect, MagpieCompiledEffectOptions};
@@ -52,3 +53,4 @@ pub use resources::{
     MagpieResourcePlan, MagpieResourcePlanOptions, MagpieSamplerResourceBinding,
     MagpieTextureResourceBinding,
 };
+pub use upload::{MagpieSourceUpload, MagpieSourceUploadPlan};

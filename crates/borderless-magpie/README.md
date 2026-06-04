@@ -41,6 +41,8 @@ Current ported pieces include:
   read/write pass lifetimes.
 - `MagpieTextureFormatDescriptor`, which maps Magpie texture formats to renderer-facing DXGI
   numbers, channel counts, component classes, and byte sizes when known.
+- `MagpieSourceUploadPlan`, which prepares DDS `SOURCE` texture uploads with data offset, row
+  pitch, byte size, and format metadata.
 
 Bundled shader/effect assets are intentionally feature-gated and must carry per-file SPDX headers
 from their original source. Some Magpie effect files have their own notices, so they should not be

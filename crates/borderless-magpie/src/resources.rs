@@ -16,6 +16,7 @@ use crate::dispatch::{MagpieDispatchPass, MagpieDispatchPlan};
 use crate::magpiefx::{MagpieFxSamplerAddress, MagpieFxSamplerFilter};
 use crate::package::MagpieEffectPackage;
 use crate::plan::{MagpieTextureFormat, MagpieTexturePlan, MagpieTextureRole};
+use crate::upload::{MagpieSourceUpload, MagpieSourceUploadPlan};
 use borderless_upscale_core::{FrameSize, UpscaleError, UpscaleResult};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -27,6 +28,7 @@ pub const MAGPIE_CB2_REGISTER: u32 = 1;
 pub struct MagpieResourcePlan {
     pub source_name: String,
     pub textures: Vec<MagpieTextureAllocation>,
+    pub source_uploads: Vec<MagpieSourceUpload>,
     pub constant_buffer: MagpieConstantBufferBinding,
     pub dynamic_constant_buffer: Option<MagpieConstantBufferBinding>,
     pub passes: Vec<MagpieResourcePass>,
@@ -45,6 +47,7 @@ impl MagpieResourcePlan {
         let compile_plan = MagpieCompilePlan::from_package_with_options(package, &options.compile)?;
         let texture_allocations =
             MagpieTextureAllocationPlan::from_render_plan(&package.render_plan)?;
+        let source_uploads = MagpieSourceUploadPlan::from_allocations(&texture_allocations)?;
         let constants = MagpieConstantBufferPlan::from_package(package, &options.constant_buffer)?;
         let dispatch = MagpieDispatchPlan::from_render_plan(&package.render_plan)?;
         let dynamic_constant_buffer = uses_dynamic(&package.effect.uses)
@@ -59,6 +62,7 @@ impl MagpieResourcePlan {
         Ok(Self {
             source_name: compile_plan.source_name,
             textures: texture_allocations.textures,
+            source_uploads: source_uploads.uploads,
             constant_buffer: MagpieConstantBufferBinding::cb1(constants),
             dynamic_constant_buffer,
             passes,

@@ -114,12 +114,16 @@ This layer should prefer physical pixels at the Win32 boundary, preserve aspect 
 `borderless-magpie` now owns the GPL-only Magpie-compatible path. The first concrete slice is a
 MagpieFX directive parser that keeps effect metadata separate from the shader body:
 
+The parser, effect-asset compatibility checks, and render-resource planning in `borderless-magpie`
+directly follow Magpie behavior and therefore remain GPL-3.0-or-later with Magpie attribution.
+
 ```mermaid
 flowchart LR
     File["*.hlsl MagpieFX file"] --> Parser["parse_magpiefx"]
     Parser --> Metadata["VERSION / SORT_NAME / USE / CAPABILITY\nPARAMETER / TEXTURE / SAMPLER / COMMON / PASS"]
     Parser --> Shader["HLSL source without //! directives"]
     Metadata --> Graph["effect graph and renderer planning"]
+    Metadata --> Resources["texture/resource plan"]
     Shader --> Compiler["future DirectX shader compiler path"]
 ```
 
@@ -137,6 +141,17 @@ are still separate follow-up slices.
 The parser output can now be converted into `EffectGraph`, preserving pass style, inputs, outputs,
 LUT/source texture references, compute block sizes, thread counts, and pass descriptions. That graph
 is the handoff point for both the native DirectX renderer path and the later wgpu comparison path.
+
+`MagpieRenderPlan` resolves MagpieFX textures into renderer-facing resources:
+
+- `INPUT` and `OUTPUT` use the capture/output frame sizes;
+- intermediate textures resolve simple Magpie dimension expressions such as `INPUT_WIDTH * 2`;
+- `SOURCE` textures are kept as source assets until the asset loader can read their real DDS size;
+- pass inputs and outputs are validated against declared texture names.
+
+The ignored `parse_magpie_assets` integration test can be pointed at a Magpie `src/Effects`
+checkout with `MAGPIE_EFFECTS_DIR`; it parses and render-plans the effect assets as a compatibility
+gate.
 
 ## Renderer comparison rule
 

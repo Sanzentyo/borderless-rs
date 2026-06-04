@@ -918,6 +918,8 @@ borderless-gui --safe-mode
 ## 14. Non-goals
 
 - C# 版の広告表示や Steam promotion は移植しない。
-- GPL コードの移植・複写はしない。挙動を仕様として参照し、Rust 側では独立実装する。
+- Magpie など GPL 実装を直接参考にした移植部分は GPL-3.0-or-later の境界へ隔離し、
+  SPDX と source attribution を付ける。MIT/Apache を維持するのは、Magpie 由来ではない
+  clean-room な型・抽象化・既存 native 操作に限る。
 - UI を WebView / Electron / React Native にしない。Windows-only native app として進める。
 - `unsafe` を core / runtime / CLI / GUI model に漏らさない。`unsafe` は `borderless-native` と低レベル GUI window/painter に閉じ込め、関数単位で安全な wrapper を用意する。

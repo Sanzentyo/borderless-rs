@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+// Verifies compatibility with the GPL-licensed Magpie effect assets:
+// https://github.com/Blinue/Magpie
 
-use borderless_magpie::parse_magpiefx_file;
+use borderless_magpie::{MagpieRenderPlan, parse_magpiefx_file};
+use borderless_upscale_core::FrameSize;
 use std::path::{Path, PathBuf};
 
 #[test]
@@ -17,10 +20,15 @@ fn parses_magpie_effect_assets() {
         root.display()
     );
 
+    let input_size = FrameSize::new(640, 480).unwrap();
+    let output_size = FrameSize::new(1920, 1080).unwrap();
     let failures = files
         .iter()
         .filter_map(|path| {
             parse_magpiefx_file(path)
+                .and_then(|effect| {
+                    MagpieRenderPlan::from_effect(&effect, input_size, output_size).map(|_| ())
+                })
                 .err()
                 .map(|err| format!("{}: {err}", path.display()))
         })
@@ -28,7 +36,7 @@ fn parses_magpie_effect_assets() {
 
     assert!(
         failures.is_empty(),
-        "failed to parse {} Magpie effect files:\n{}",
+        "failed to parse/plan {} Magpie effect files:\n{}",
         failures.len(),
         failures.join("\n")
     );

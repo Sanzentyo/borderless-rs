@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+// Magpie-compatible effect parsing based on the GPL-licensed Magpie project:
+// https://github.com/Blinue/Magpie
 
 use crate::effect::{EffectGraph, EffectPass, EffectPassStyle, EffectSource, MagpieEffect};
 use borderless_upscale_core::{UpscaleError, UpscaleResult};

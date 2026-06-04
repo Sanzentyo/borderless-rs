@@ -18,6 +18,19 @@ placing Magpie-derived scaler work under GPL.
 | `borderless-magpie` | `GPL-3.0-or-later` | Magpie-compatible port layer and effect graph. |
 | `borderless-upscale-wgpu` | `GPL-3.0-or-later` | wgpu/DirectX rewrite derived from the Magpie-compatible pipeline. |
 
+## Magpie attribution and inheritance
+
+The Magpie-compatible implementation references the GPL-licensed Magpie project:
+
+- Magpie: <https://github.com/Blinue/Magpie>
+
+Any Rust module, shader, test fixture, render plan, parser behavior, or asset handling that directly
+follows Magpie behavior is kept in GPL-3.0-or-later crates. This includes `borderless-magpie` and
+GPL comparison/rendering crates that consume Magpie-derived pipeline behavior.
+
+Clean-room planning types may remain in permissive crates only when they are not derived from Magpie
+implementation details and can stand independently as generic capture/scaling/input abstractions.
+
 ## Feature boundary
 
 - `magpie-port`: enables GPL Magpie-compatible scaler integration.
@@ -47,4 +60,3 @@ Markdown documentation can use an HTML comment:
 ```text
 <!-- SPDX-License-Identifier: MIT OR Apache-2.0 -->
 ```
-

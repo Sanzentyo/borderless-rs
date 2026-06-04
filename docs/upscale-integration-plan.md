@@ -124,7 +124,9 @@ flowchart LR
     Parser --> Shader["HLSL source without //! directives"]
     Metadata --> Graph["effect graph and renderer planning"]
     Metadata --> Resources["texture/resource plan"]
-    Shader --> Compiler["future DirectX shader compiler path"]
+    Shader --> Package["MagpieEffectPackage\ninclude-expanded compiler source"]
+    Resources --> Package
+    Package --> Compiler["future DirectX shader compiler path"]
 ```
 
 The parser currently recognizes these directive groups:
@@ -151,8 +153,12 @@ is the handoff point for both the native DirectX renderer path and the later wgp
 - pass inputs and outputs are validated against declared texture names.
 
 The ignored `parse_magpie_assets` integration test can be pointed at a Magpie `src/Effects`
-checkout with `MAGPIE_EFFECTS_DIR`; it parses, resolves DDS source metadata, and render-plans the
-effect assets as a compatibility gate.
+checkout with `MAGPIE_EFFECTS_DIR`; it parses, expands HLSL includes, resolves DDS source metadata,
+and render-plans the effect assets as a compatibility gate.
+
+`MagpieEffectPackage` is the current compiler handoff object. It contains the parsed `MagpieFx`, the
+`MagpieRenderPlan`, the include-expanded HLSL compiler source, the resolved include list, and the
+resolved `SOURCE` asset list.
 
 ## Renderer comparison rule
 

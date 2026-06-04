@@ -5,6 +5,7 @@
 pub mod dds;
 pub mod effect;
 pub mod magpiefx;
+pub mod package;
 pub mod plan;
 pub mod profile;
 
@@ -15,6 +16,7 @@ pub use magpiefx::{
     MagpieFxSamplerAddress, MagpieFxSamplerFilter, MagpieFxTexture, parse_magpiefx,
     parse_magpiefx_file,
 };
+pub use package::{MagpieEffectPackage, MagpieInclude, MagpieSourceAsset};
 pub use plan::{
     MagpiePassPlan, MagpieRenderPlan, MagpieTextureFormat, MagpieTexturePlan, MagpieTextureRole,
 };

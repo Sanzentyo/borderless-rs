@@ -13,7 +13,9 @@ Current ported pieces include:
 - MagpieFX directive parsing;
 - conversion into `EffectGraph`;
 - renderer-facing `MagpieRenderPlan`;
-- Pure Rust DDS header metadata parsing for `SOURCE` textures.
+- Pure Rust DDS header metadata parsing for `SOURCE` textures;
+- `MagpieEffectPackage`, which resolves includes, source assets, and render planning from an effect
+  file.
 
 Reference project:
 

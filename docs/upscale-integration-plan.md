@@ -235,6 +235,11 @@ their usage flags plus read/write pass lifetimes. `MagpieResourcePlan` now carri
 alongside CBV/SRV/UAV bindings and sampler descriptors, including filter/address mode, so a renderer
 can create the texture and sampler pools before interpreting the execution commands.
 
+`MagpieTextureFormatDescriptor` maps Magpie texture formats to renderer-facing metadata: DXGI format
+number, byte size, channel count, component class, normalized/signed/sRGB flags. Unknown `DXGI`
+values are preserved but do not claim a byte layout until the renderer path explicitly supports
+them.
+
 `MagpieResourcePlan` is the renderer handoff shape for the next DirectX/wgpu slice. It combines the
 per-pass compile jobs, dispatch groups, CB1/optional CB2 bindings, SRV/UAV texture bindings, and
 sampler descriptors without depending on a concrete D3D or wgpu API. That gives both renderer paths

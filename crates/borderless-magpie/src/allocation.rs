@@ -4,6 +4,7 @@
 // Magpie-compatible texture allocation planning for the GPL port:
 // https://github.com/Blinue/Magpie
 
+use crate::formats::MagpieTextureFormatDescriptor;
 use crate::plan::{MagpieRenderPlan, MagpieTextureFormat, MagpieTexturePlan, MagpieTextureRole};
 use borderless_upscale_core::{FrameSize, UpscaleError, UpscaleResult};
 use serde::{Deserialize, Serialize};
@@ -37,6 +38,7 @@ pub struct MagpieTextureAllocation {
     pub name: String,
     pub role: MagpieTextureRole,
     pub format: MagpieTextureFormat,
+    pub format_descriptor: MagpieTextureFormatDescriptor,
     pub size: FrameSize,
     pub source_path: Option<PathBuf>,
     pub usage: Vec<MagpieTextureUsage>,
@@ -108,6 +110,7 @@ fn texture_allocation(
         name: texture.name.clone(),
         role: texture.role,
         format: texture.format.clone(),
+        format_descriptor: texture.format.descriptor(),
         size,
         source_path: texture.source_path.clone(),
         usage,
@@ -216,6 +219,8 @@ void Pass2(uint2 pos) { OUTPUT[pos] = tex1[pos]; }
         );
         assert_eq!(intermediate.writes, vec![1]);
         assert_eq!(intermediate.reads, vec![2]);
+        assert_eq!(intermediate.format_descriptor.dxgi_format, Some(28));
+        assert_eq!(intermediate.format_descriptor.bytes_per_pixel, Some(4));
         assert_eq!(intermediate.first_use_pass, Some(1));
         assert_eq!(intermediate.last_use_pass, Some(2));
 

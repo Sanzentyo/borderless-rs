@@ -39,6 +39,8 @@ Current ported pieces include:
   texture bindings, and sampler descriptors into the renderer handoff shape.
 - `MagpieTextureAllocationPlan`, which resolves renderer texture allocations, usage flags, and
   read/write pass lifetimes.
+- `MagpieTextureFormatDescriptor`, which maps Magpie texture formats to renderer-facing DXGI
+  numbers, channel counts, component classes, and byte sizes when known.
 
 Bundled shader/effect assets are intentionally feature-gated and must carry per-file SPDX headers
 from their original source. Some Magpie effect files have their own notices, so they should not be

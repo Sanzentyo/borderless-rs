@@ -10,6 +10,7 @@ pub mod dds;
 pub mod dispatch;
 pub mod effect;
 pub mod execution;
+pub mod formats;
 pub mod hlsl_compiler;
 pub mod magpiefx;
 pub mod package;
@@ -31,6 +32,7 @@ pub use dds::{DdsMetadata, parse_dds_metadata, read_dds_metadata};
 pub use dispatch::{MagpieDispatchPass, MagpieDispatchPlan};
 pub use effect::{EffectGraph, EffectPass, EffectPassStyle, EffectSource, MagpieEffect};
 pub use execution::{MagpieExecutionCommand, MagpieExecutionPlan};
+pub use formats::{MagpieTextureComponent, MagpieTextureFormatDescriptor};
 pub use hlsl_compiler::{
     MagpieCompiledShader, MagpieExternalHlslCompiler, MagpieHlslCompilerInvocation,
     MagpieHlslCompilerKind,

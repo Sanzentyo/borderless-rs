@@ -143,10 +143,13 @@ impl MagpieTextureFormat {
             "R8_UNORM" => Self::R8Unorm,
             "R8G8_UNORM" => Self::R8g8Unorm,
             "R8G8B8A8_UNORM" => Self::R8g8b8a8Unorm,
+            "R8G8B8A8_UNORM_SRGB" => Self::R8g8b8a8UnormSrgb,
             "R8G8B8A8_SNORM" => Self::R8g8b8a8Snorm,
             "R16_FLOAT" => Self::R16Float,
             "R16G16_FLOAT" => Self::R16g16Float,
             "R16G16B16A16_FLOAT" => Self::R16g16b16a16Float,
+            "R32_FLOAT" => Self::R32Float,
+            "R32G32B32A32_FLOAT" => Self::R32g32b32a32Float,
             other => Self::Unknown(other.to_owned()),
         }
     }

@@ -259,6 +259,10 @@ before native DirectX or wgpu-specific object creation.
 Behind `wgpu-compare`, `MagpieWgpuDescriptorPlan` converts those backend descriptors into
 `wgpu::TextureDescriptor`, `wgpu::BufferDescriptor`, and `wgpu::SamplerDescriptor` values. The
 mapping remains explicit: unsupported raw DXGI formats are rejected until a wgpu equivalent is added.
+`MagpieWgpuPreparedEffectPlan` is the current one-shot comparison handoff: it owns the resource plan,
+backend descriptors, `SOURCE` uploads, binding layouts, WGSL declarations, translated shader plan,
+and execution plan for a Magpie package. With a `wgpu::Device`, it can build `MagpieWgpuRuntimeObjects`
+containing the resource pool, pass layouts, bind groups, and compute pipelines.
 `MagpieWgpuResourceObjects` creates the corresponding wgpu textures, texture views, constant
 buffers, and samplers, then uses the pass binding layout to assemble `wgpu::BindGroup` objects.
 `MagpieWgpuSourceUploadPlan` converts `MagpieSourceUploadPlan` entries into wgpu texture-copy

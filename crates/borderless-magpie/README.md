@@ -52,6 +52,9 @@ Current ported pieces include:
   descriptors ready for native DirectX or wgpu-specific translation.
 - `MagpieWgpuDescriptorPlan` behind `wgpu-compare`, which converts backend descriptors into wgpu
   texture, buffer, and sampler descriptors for the comparison renderer path.
+- `MagpieWgpuPreparedEffectPlan` behind `wgpu-compare`, which bundles the resource plan, backend
+  descriptors, source uploads, binding layouts, WGSL declarations, translated shaders, and execution
+  plan into one renderer handoff.
 - `MagpieWgpuResourceObjects` behind `wgpu-compare`, which creates wgpu textures, texture views,
   constant buffers, and samplers from the backend descriptors and can assemble pass-local bind
   groups from the layout plan.

@@ -59,6 +59,86 @@ impl<'a> MagpieWgpuDescriptorPlan<'a> {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct MagpieWgpuPreparedEffectPlan {
+    pub resources: MagpieResourcePlan,
+    pub backend_descriptors: MagpieBackendDescriptorPlan,
+    pub source_uploads: MagpieWgpuSourceUploadPlan,
+    pub binding_layouts: MagpieWgpuBindingLayoutPlan,
+    pub declarations: MagpieWgpuDeclarationPlan,
+    pub shaders: MagpieWgpuShaderPlan,
+    pub execution: MagpieWgpuExecutionPlan,
+}
+
+impl MagpieWgpuPreparedEffectPlan {
+    pub fn from_package(package: &MagpieEffectPackage) -> UpscaleResult<Self> {
+        let resources = MagpieResourcePlan::from_package(package)?;
+        Self::from_package_and_resource_plan(package, resources)
+    }
+
+    pub fn from_package_and_resource_plan(
+        package: &MagpieEffectPackage,
+        resources: MagpieResourcePlan,
+    ) -> UpscaleResult<Self> {
+        let backend_descriptors = MagpieBackendDescriptorPlan::from_resource_plan(&resources)?;
+        let source_uploads = MagpieWgpuSourceUploadPlan::from_resource_plan(&resources)?;
+        let binding_layouts = MagpieWgpuBindingLayoutPlan::from_resource_plan(&resources)?;
+        let declarations = MagpieWgpuDeclarationPlan::from_resource_plan(&resources)?;
+        let translated =
+            MagpieWgpuBodyTranslationPlan::from_package_and_resource_plan(package, &resources)?;
+        let shaders = MagpieWgpuShaderPlan::from_wgsl_passes(&binding_layouts, translated.passes)?;
+        let execution = MagpieWgpuExecutionPlan::from_resource_plan(&resources);
+
+        Ok(Self {
+            resources,
+            backend_descriptors,
+            source_uploads,
+            binding_layouts,
+            declarations,
+            shaders,
+            execution,
+        })
+    }
+
+    pub fn descriptor_plan(&self) -> UpscaleResult<MagpieWgpuDescriptorPlan<'_>> {
+        MagpieWgpuDescriptorPlan::from_backend_descriptors(&self.backend_descriptors)
+    }
+
+    pub fn create_runtime_objects(
+        &self,
+        device: &wgpu::Device,
+    ) -> UpscaleResult<MagpieWgpuRuntimeObjects> {
+        let resources =
+            MagpieWgpuResourceObjects::from_backend_descriptors(device, &self.backend_descriptors)?;
+        let layouts = self.binding_layouts.create_pass_layout_objects(device);
+        let bind_groups = self
+            .binding_layouts
+            .passes
+            .iter()
+            .zip(layouts.iter())
+            .map(|(layout, objects)| {
+                resources.create_pass_bind_group(device, layout, &objects.bind_group_layout)
+            })
+            .collect::<UpscaleResult<Vec<_>>>()?;
+        let pipelines = self.shaders.create_pipeline_objects(device, &layouts)?;
+
+        Ok(MagpieWgpuRuntimeObjects {
+            resources,
+            layouts,
+            bind_groups,
+            pipelines,
+        })
+    }
+}
+
+#[derive(Debug)]
+pub struct MagpieWgpuRuntimeObjects {
+    pub resources: MagpieWgpuResourceObjects,
+    pub layouts: Vec<MagpieWgpuPassLayoutObjects>,
+    pub bind_groups: Vec<MagpieWgpuPassBindGroup>,
+    pub pipelines: Vec<MagpieWgpuPipelineObjects>,
+}
+
 #[derive(Debug)]
 pub struct MagpieWgpuResourceObjects {
     pub textures: Vec<MagpieWgpuTextureObject>,
@@ -319,6 +399,13 @@ pub struct MagpieWgpuSourceUploadPlan {
 }
 
 impl MagpieWgpuSourceUploadPlan {
+    pub fn from_resource_plan(resources: &MagpieResourcePlan) -> UpscaleResult<Self> {
+        let plan = MagpieSourceUploadPlan {
+            uploads: resources.source_uploads.clone(),
+        };
+        Self::from_source_upload_plan(&plan)
+    }
+
     pub fn from_source_upload_plan(plan: &MagpieSourceUploadPlan) -> UpscaleResult<Self> {
         let uploads = plan
             .uploads
@@ -1798,6 +1885,48 @@ void Pass2(uint2 pos) { OUTPUT[pos] = tex1[pos]; }
         assert_eq!(execution.pass(1).unwrap().group_count, [20, 15, 1]);
         assert_eq!(execution.pass(2).unwrap().pass_name, "Pass 2");
         assert_eq!(execution.pass(2).unwrap().group_count, [80, 60, 1]);
+    }
+
+    #[test]
+    fn prepares_wgpu_effect_plan_from_package() {
+        let package = package(
+            r"
+//!MAGPIE EFFECT
+//!VERSION 4
+//!TEXTURE
+Texture2D INPUT;
+//!TEXTURE
+Texture2D OUTPUT;
+//!PASS 1
+//!IN INPUT
+//!OUT OUTPUT
+//!BLOCK_SIZE 8
+//!NUM_THREADS 64
+void Pass1(uint2 pos) { OUTPUT[pos] = INPUT[pos]; }
+",
+        );
+
+        let prepared = MagpieWgpuPreparedEffectPlan::from_package(&package).unwrap();
+        let descriptors = prepared.descriptor_plan().unwrap();
+
+        assert_eq!(prepared.resources.passes.len(), 1);
+        assert_eq!(prepared.backend_descriptors.textures.len(), 2);
+        assert!(prepared.source_uploads.uploads.is_empty());
+        assert_eq!(prepared.binding_layouts.passes.len(), 1);
+        assert_eq!(prepared.declarations.passes.len(), 1);
+        assert_eq!(prepared.shaders.passes.len(), 1);
+        assert_eq!(prepared.execution.passes.len(), 1);
+        assert_eq!(descriptors.textures.len(), 2);
+        assert_eq!(descriptors.buffers.len(), 1);
+        assert!(
+            prepared
+                .shaders
+                .pass(1)
+                .unwrap()
+                .wgsl_source
+                .contains("@compute @workgroup_size(8, 8, 1)")
+        );
+        assert_eq!(prepared.execution.pass(1).unwrap().group_count, [80, 60, 1]);
     }
 
     #[test]

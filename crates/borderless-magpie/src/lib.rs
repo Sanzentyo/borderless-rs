@@ -70,7 +70,7 @@ pub use wgpu_bridge::{
     MagpieWgpuDeclarationPass, MagpieWgpuDeclarationPlan, MagpieWgpuDescriptorPlan,
     MagpieWgpuExecutablePass, MagpieWgpuExecutionPass, MagpieWgpuExecutionPlan,
     MagpieWgpuPassBindGroup, MagpieWgpuPassLayout, MagpieWgpuPassLayoutObjects,
-    MagpieWgpuPipelineObjects, MagpieWgpuResourceObjects, MagpieWgpuSamplerObject,
-    MagpieWgpuShaderPass, MagpieWgpuShaderPlan, MagpieWgpuSourceUpload, MagpieWgpuSourceUploadPlan,
-    MagpieWgpuTextureObject,
+    MagpieWgpuPipelineObjects, MagpieWgpuPreparedEffectPlan, MagpieWgpuResourceObjects,
+    MagpieWgpuRuntimeObjects, MagpieWgpuSamplerObject, MagpieWgpuShaderPass, MagpieWgpuShaderPlan,
+    MagpieWgpuSourceUpload, MagpieWgpuSourceUploadPlan, MagpieWgpuTextureObject,
 };

@@ -54,7 +54,8 @@ Current ported pieces include:
   texture, buffer, and sampler descriptors for the comparison renderer path.
 - `MagpieWgpuPreparedEffectPlan` behind `wgpu-compare`, which bundles the resource plan, backend
   descriptors, source uploads, binding layouts, WGSL declarations, translated shaders, and execution
-  plan into one renderer handoff.
+  plan into one renderer handoff. Once runtime objects exist, it can upload `SOURCE` textures and
+  record the compute dispatch sequence in the expected order.
 - `MagpieWgpuResourceObjects` behind `wgpu-compare`, which creates wgpu textures, texture views,
   constant buffers, and samplers from the backend descriptors and can assemble pass-local bind
   groups from the layout plan.

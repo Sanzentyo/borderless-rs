@@ -129,6 +129,32 @@ impl MagpieWgpuPreparedEffectPlan {
             pipelines,
         })
     }
+
+    pub fn write_source_uploads(
+        &self,
+        queue: &wgpu::Queue,
+        runtime: &MagpieWgpuRuntimeObjects,
+    ) -> UpscaleResult<()> {
+        runtime.write_source_uploads(queue, &self.source_uploads)
+    }
+
+    pub fn record_execution(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        runtime: &MagpieWgpuRuntimeObjects,
+    ) -> UpscaleResult<()> {
+        runtime.record_execution(encoder, &self.execution)
+    }
+
+    pub fn write_sources_and_record_execution(
+        &self,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        runtime: &MagpieWgpuRuntimeObjects,
+    ) -> UpscaleResult<()> {
+        self.write_source_uploads(queue, runtime)?;
+        self.record_execution(encoder, runtime)
+    }
 }
 
 #[derive(Debug)]
@@ -137,6 +163,24 @@ pub struct MagpieWgpuRuntimeObjects {
     pub layouts: Vec<MagpieWgpuPassLayoutObjects>,
     pub bind_groups: Vec<MagpieWgpuPassBindGroup>,
     pub pipelines: Vec<MagpieWgpuPipelineObjects>,
+}
+
+impl MagpieWgpuRuntimeObjects {
+    pub fn write_source_uploads(
+        &self,
+        queue: &wgpu::Queue,
+        uploads: &MagpieWgpuSourceUploadPlan,
+    ) -> UpscaleResult<()> {
+        self.resources.write_source_uploads(queue, uploads)
+    }
+
+    pub fn record_execution(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        execution: &MagpieWgpuExecutionPlan,
+    ) -> UpscaleResult<()> {
+        execution.record_compute_pass(encoder, &self.pipelines, &self.bind_groups)
+    }
 }
 
 #[derive(Debug)]

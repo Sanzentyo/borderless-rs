@@ -262,7 +262,9 @@ mapping remains explicit: unsupported raw DXGI formats are rejected until a wgpu
 `MagpieWgpuPreparedEffectPlan` is the current one-shot comparison handoff: it owns the resource plan,
 backend descriptors, `SOURCE` uploads, binding layouts, WGSL declarations, translated shader plan,
 and execution plan for a Magpie package. With a `wgpu::Device`, it can build `MagpieWgpuRuntimeObjects`
-containing the resource pool, pass layouts, bind groups, and compute pipelines.
+containing the resource pool, pass layouts, bind groups, and compute pipelines. The prepared plan can
+then call `write_sources_and_record_execution` to upload `SOURCE` textures through the runtime
+resource pool and record the ordered compute dispatches into a `wgpu::CommandEncoder`.
 `MagpieWgpuResourceObjects` creates the corresponding wgpu textures, texture views, constant
 buffers, and samplers, then uses the pass binding layout to assemble `wgpu::BindGroup` objects.
 `MagpieWgpuSourceUploadPlan` converts `MagpieSourceUploadPlan` entries into wgpu texture-copy

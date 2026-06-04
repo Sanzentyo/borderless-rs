@@ -134,9 +134,11 @@ flowchart LR
     Resources --> Package
     Package --> Jobs["MagpieCompilePlan\n__M / cs_5_0 / per-pass macros"]
     Jobs --> Compiler["MagpieExternalHlslCompiler\nfxc/dxc bytecode handoff"]
+    Compiler --> Bundle["MagpieCompiledEffect\nbytecode + resources"]
     Resources --> Dispatch["MagpieDispatchPlan\nDispatch(x,y,1) groups"]
     Resources --> Constants["MagpieConstantBufferPlan\nCB1 dword payload"]
     Resources --> Handoff["MagpieResourcePlan\nCBV / SRV / UAV / sampler handoff"]
+    Handoff --> Bundle
 ```
 
 The parser currently recognizes these directive groups:
@@ -206,6 +208,10 @@ enabled.
 per-pass generated HLSL source file to a temporary path, invokes `fxc` or `dxc`, reads the resulting
 `.cso`, captures diagnostics, and removes the temporary files on drop. The Magpie-compatible default
 target remains `cs_5_0`, so `fxc` is the expected compiler for parity with Magpie's Direct3D 11 path.
+
+`MagpieCompiledEffect` validates and bundles compiled per-pass bytecode with `MagpieResourcePlan`.
+The actual compiler execution path still uses `MagpieExternalHlslCompiler`, but the bundle can also
+be assembled from precompiled bytecode for tests, caches, and future renderer handoff code.
 
 `MagpieDispatchPlan` mirrors Magpie's `EffectDrawer::_UpdatePassResources` dispatch math. Each pass
 uses the first output texture size and the normalized block size, then computes

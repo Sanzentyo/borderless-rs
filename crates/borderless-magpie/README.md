@@ -27,6 +27,8 @@ Current ported pieces include:
   built-in helpers, and per-pass wrapper source.
 - `MagpieExternalHlslCompiler`, which can hand generated HLSL to `fxc` or `dxc` and return compiled
   bytecode plus diagnostics without adding unsafe Rust.
+- `MagpieCompiledEffect`, which validates and bundles compiled shader bytecode with the renderer
+  resource handoff.
 - `MagpieDispatchPlan`, which mirrors Magpie's `Dispatch(ceil(width / block_width), ceil(height /
   block_height), 1)` scheduling from the first output texture of each pass.
 - `MagpieConstantBufferPlan`, which mirrors Magpie's CB1 dword layout for builtin constants,

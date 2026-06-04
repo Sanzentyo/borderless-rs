@@ -2,6 +2,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod compiled;
 pub mod compiler;
 pub mod constants;
 pub mod dds;
@@ -14,6 +15,7 @@ pub mod plan;
 pub mod profile;
 pub mod resources;
 
+pub use compiled::{MagpieCompiledEffect, MagpieCompiledEffectOptions};
 pub use compiler::{
     MAGPIE_ENTRY_POINT, MAGPIE_TARGET_PROFILE, MagpieCompilePlan, MagpieShaderJob,
     MagpieShaderMacro,

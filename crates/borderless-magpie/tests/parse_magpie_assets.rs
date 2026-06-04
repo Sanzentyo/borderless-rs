@@ -2,7 +2,7 @@
 // Verifies compatibility with the GPL-licensed Magpie effect assets:
 // https://github.com/Blinue/Magpie
 
-use borderless_magpie::MagpieEffectPackage;
+use borderless_magpie::{MagpieCompilePlan, MagpieEffectPackage};
 use borderless_upscale_core::FrameSize;
 use std::path::{Path, PathBuf};
 
@@ -26,7 +26,10 @@ fn parses_magpie_effect_assets() {
         .iter()
         .filter_map(|path| {
             MagpieEffectPackage::from_file(path, input_size, output_size)
-                .map(|_| ())
+                .and_then(|package| {
+                    let _plan = MagpieCompilePlan::from_package(&package)?;
+                    Ok(())
+                })
                 .err()
                 .map(|err| format!("{}: {err}", path.display()))
         })
@@ -34,7 +37,7 @@ fn parses_magpie_effect_assets() {
 
     assert!(
         failures.is_empty(),
-        "failed to package {} Magpie effect files:\n{}",
+        "failed to package/compile-plan {} Magpie effect files:\n{}",
         failures.len(),
         failures.join("\n")
     );

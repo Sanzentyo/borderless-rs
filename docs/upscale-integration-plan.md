@@ -126,7 +126,8 @@ flowchart LR
     Metadata --> Resources["texture/resource plan"]
     Shader --> Package["MagpieEffectPackage\ninclude-expanded compiler source"]
     Resources --> Package
-    Package --> Compiler["future DirectX shader compiler path"]
+    Package --> Jobs["MagpieCompilePlan\n__M / cs_5_0 / per-pass macros"]
+    Jobs --> Compiler["future DirectX shader compiler path"]
 ```
 
 The parser currently recognizes these directive groups:
@@ -159,6 +160,11 @@ and render-plans the effect assets as a compatibility gate.
 `MagpieEffectPackage` is the current compiler handoff object. It contains the parsed `MagpieFx`, the
 `MagpieRenderPlan`, the include-expanded HLSL compiler source, the resolved include list, and the
 resolved `SOURCE` asset list.
+
+`MagpieCompilePlan` derives per-pass shader jobs from a package. It follows Magpie's compute-shader
+compile convention: every pass compiles through the `__M` entry point with `cs_5_0`, including
+PS-style passes, and carries Magpie macros such as `MP_BLOCK_WIDTH`, `MP_NUM_THREADS_X`, `MP_PS_STYLE`,
+`MP_FP16`, and the `MF*` float/min16float aliases.
 
 ## Renderer comparison rule
 

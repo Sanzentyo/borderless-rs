@@ -15,7 +15,9 @@ Current ported pieces include:
 - renderer-facing `MagpieRenderPlan`;
 - Pure Rust DDS header metadata parsing for `SOURCE` textures;
 - `MagpieEffectPackage`, which resolves includes, source assets, and render planning from an effect
-  file.
+  file;
+- `MagpieCompilePlan`, which prepares Magpie-compatible per-pass shader compile jobs using the
+  `__M` entry point, `cs_5_0` target profile, and Magpie macro set.
 
 Reference project:
 

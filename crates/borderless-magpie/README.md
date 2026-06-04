@@ -29,6 +29,8 @@ Current ported pieces include:
   bytecode plus diagnostics without adding unsafe Rust.
 - `MagpieCompiledEffect`, which validates and bundles compiled shader bytecode with the renderer
   resource handoff.
+- `MagpieExecutionPlan`, which lowers a compiled effect into ordered pass commands for pipeline,
+  constant buffer, texture, sampler, and dispatch binding.
 - `MagpieDispatchPlan`, which mirrors Magpie's `Dispatch(ceil(width / block_width), ceil(height /
   block_height), 1)` scheduling from the first output texture of each pass.
 - `MagpieConstantBufferPlan`, which mirrors Magpie's CB1 dword layout for builtin constants,

@@ -135,6 +135,7 @@ flowchart LR
     Package --> Jobs["MagpieCompilePlan\n__M / cs_5_0 / per-pass macros"]
     Jobs --> Compiler["MagpieExternalHlslCompiler\nfxc/dxc bytecode handoff"]
     Compiler --> Bundle["MagpieCompiledEffect\nbytecode + resources"]
+    Bundle --> Exec["MagpieExecutionPlan\nordered pass commands"]
     Resources --> Dispatch["MagpieDispatchPlan\nDispatch(x,y,1) groups"]
     Resources --> Constants["MagpieConstantBufferPlan\nCB1 dword payload"]
     Resources --> Handoff["MagpieResourcePlan\nCBV / SRV / UAV / sampler handoff"]
@@ -212,6 +213,11 @@ target remains `cs_5_0`, so `fxc` is the expected compiler for parity with Magpi
 `MagpieCompiledEffect` validates and bundles compiled per-pass bytecode with `MagpieResourcePlan`.
 The actual compiler execution path still uses `MagpieExternalHlslCompiler`, but the bundle can also
 be assembled from precompiled bytecode for tests, caches, and future renderer handoff code.
+
+`MagpieExecutionPlan` lowers a compiled effect into ordered pass commands: begin pass, bind compute
+pipeline, bind CB1/optional CB2, bind SRVs, bind UAVs, bind samplers, dispatch, and end pass. It is
+still API-neutral, so the native DirectX path and the wgpu comparison path can interpret the same
+command contract.
 
 `MagpieDispatchPlan` mirrors Magpie's `EffectDrawer::_UpdatePassResources` dispatch math. Each pass
 uses the first output texture size and the normalized block size, then computes

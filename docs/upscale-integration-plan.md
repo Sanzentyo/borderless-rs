@@ -127,7 +127,7 @@ flowchart LR
     Shader --> Package["MagpieEffectPackage\ninclude-expanded compiler source"]
     Resources --> Package
     Package --> Jobs["MagpieCompilePlan\n__M / cs_5_0 / per-pass macros"]
-    Jobs --> Compiler["future DirectX shader compiler path"]
+    Jobs --> Compiler["MagpieExternalHlslCompiler\nfxc/dxc bytecode handoff"]
 ```
 
 The parser currently recognizes these directive groups:
@@ -193,8 +193,13 @@ Each shader job now also carries the Magpie-style binding plan and generated HLS
 used when no override is supplied, and jobs carry the `MP_INLINE_PARAMS` macro when this mode is
 enabled.
 
-The remaining DirectX work is to add any remaining optional helper paths and call the actual D3D
-compiler/backend.
+`MagpieExternalHlslCompiler` is the current Pure Rust handoff to actual shader bytecode. It writes a
+per-pass generated HLSL source file to a temporary path, invokes `fxc` or `dxc`, reads the resulting
+`.cso`, captures diagnostics, and removes the temporary files on drop. The Magpie-compatible default
+target remains `cs_5_0`, so `fxc` is the expected compiler for parity with Magpie's Direct3D 11 path.
+
+The remaining DirectX work is to add any remaining optional helper paths and wire the compiled
+bytecode into the actual D3D renderer/backend.
 
 ## Renderer comparison rule
 

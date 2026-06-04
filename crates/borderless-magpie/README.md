@@ -25,6 +25,8 @@ Current ported pieces include:
   `__M` entry point, `cs_5_0` target profile, Magpie macro set, generated cbuffer/resource/sampler
   declarations, cbuffer or inline parameter bindings, optional `_DYNAMIC` / `MulAdd` helpers,
   built-in helpers, and per-pass wrapper source.
+- `MagpieExternalHlslCompiler`, which can hand generated HLSL to `fxc` or `dxc` and return compiled
+  bytecode plus diagnostics without adding unsafe Rust.
 
 Bundled shader/effect assets are intentionally feature-gated and must carry per-file SPDX headers
 from their original source. Some Magpie effect files have their own notices, so they should not be

@@ -87,11 +87,21 @@ impl MagpieFx {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MagpieFxParameter {
     pub symbol: String,
+    pub value_type: MagpieFxParameterType,
     pub label: Option<String>,
     pub default_value: Option<String>,
     pub min: Option<String>,
     pub max: Option<String>,
     pub step: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MagpieFxParameterType {
+    Float,
+    Int,
+    #[default]
+    Unknown,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -503,9 +513,10 @@ fn apply_declaration(line: &str, block: Block, effect: &mut MagpieFx) {
         Block::Parameter => {
             if let Some(parameter) = effect.parameters.last_mut()
                 && parameter.symbol.is_empty()
-                && let Some(symbol) = declaration_symbol(line)
+                && let Some((value_type, symbol)) = parameter_declaration(line)
             {
                 parameter.symbol = symbol;
+                parameter.value_type = value_type;
             }
         }
         Block::Texture => {
@@ -550,6 +561,20 @@ fn declaration_symbol(line: &str) -> Option<String> {
         .filter(|part| !part.is_empty())
         .nth(1)
         .map(ToOwned::to_owned)
+}
+
+fn parameter_declaration(line: &str) -> Option<(MagpieFxParameterType, String)> {
+    let declaration = line.split("//").next()?.trim().trim_end_matches(';').trim();
+    let mut parts = declaration
+        .split(|ch: char| ch.is_whitespace() || ch == '=')
+        .filter(|part| !part.is_empty());
+    let value_type = match parts.next()? {
+        "float" => MagpieFxParameterType::Float,
+        "int" => MagpieFxParameterType::Int,
+        _ => MagpieFxParameterType::Unknown,
+    };
+    let symbol = parts.next()?.to_owned();
+    Some((value_type, symbol))
 }
 
 fn extend_csv(target: &mut Vec<String>, value: &str) {
@@ -675,6 +700,10 @@ void Pass1(uint2 blockStart, uint3 threadId) {}
 
         assert_eq!(effect.sort_name.as_deref(), Some("Test_Effect"));
         assert_eq!(effect.parameters[0].symbol, "sharpness");
+        assert_eq!(
+            effect.parameters[0].value_type,
+            MagpieFxParameterType::Float
+        );
         assert_eq!(effect.parameters[0].label.as_deref(), Some("Sharpness"));
         assert_eq!(effect.textures[2].source.as_deref(), Some("Lut.dds"));
         assert!(effect.hlsl_source.contains("float CommonValue()"));

@@ -179,15 +179,17 @@ PS-style passes, and carries Magpie macros such as `MP_BLOCK_WIDTH`, `MP_NUM_THR
 Each shader job now also carries the Magpie-style binding plan and generated HLSL source:
 
 - `cbuffer __CB1 : register(b0)` for input/output size, texel size, scale, and PS-style intermediate
-  output sizes;
+  output sizes plus `float`/`int` Magpie parameters;
+- optional `cbuffer __CB2 : register(b1)` with `__frameCount` for `_DYNAMIC` effects;
 - pass-local `Texture2D<T> : register(tN)` and `RWTexture2D<T> : register(uN)` declarations using
   Magpie's format-to-texel-type table;
 - effect samplers as `SamplerState : register(sN)`;
 - built-in helpers such as `Rmp8x8`, `GetInputSize`, `GetOutputPt`, and `GetScale`;
+- `USE MulAdd` helper overloads using `mad`;
 - Magpie-style PS pass wrapping with bounds checks and the four 8x8 sub-tile writes.
 
-The remaining DirectX work is to generate parameter constants/cbuffers fully, add optional dynamic
-frame-count and `MulAdd` helper paths, and call the actual D3D compiler/backend.
+The remaining DirectX work is to support inline parameter constants as an alternate compile mode,
+add any remaining optional helper paths, and call the actual D3D compiler/backend.
 
 ## Renderer comparison rule
 

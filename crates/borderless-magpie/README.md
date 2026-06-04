@@ -23,7 +23,8 @@ Current ported pieces include:
   file;
 - `MagpieCompilePlan`, which prepares Magpie-compatible per-pass shader compile jobs using the
   `__M` entry point, `cs_5_0` target profile, Magpie macro set, generated cbuffer/resource/sampler
-  declarations, built-in helpers, and per-pass wrapper source.
+  declarations, parameter bindings, optional `_DYNAMIC` / `MulAdd` helpers, built-in helpers, and
+  per-pass wrapper source.
 
 Bundled shader/effect assets are intentionally feature-gated and must carry per-file SPDX headers
 from their original source. Some Magpie effect files have their own notices, so they should not be

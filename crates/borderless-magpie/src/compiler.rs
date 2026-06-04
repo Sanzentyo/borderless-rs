@@ -4,7 +4,7 @@
 // Magpie-compatible shader compilation planning for the GPL port:
 // https://github.com/Blinue/Magpie
 
-use crate::magpiefx::MagpieFxPassStyle;
+use crate::magpiefx::{MagpieFxParameter, MagpieFxParameterType, MagpieFxPassStyle};
 use crate::package::MagpieEffectPackage;
 use crate::plan::{MagpiePassPlan, MagpieTextureFormat, MagpieTexturePlan};
 use borderless_upscale_core::{UpscaleError, UpscaleResult};
@@ -57,6 +57,7 @@ pub struct MagpieShaderJob {
     pub outputs: Vec<String>,
     pub texture_bindings: Vec<MagpieTextureBinding>,
     pub sampler_bindings: Vec<MagpieSamplerBinding>,
+    pub parameter_bindings: Vec<MagpieParameterBinding>,
     pub base_source: String,
     pub generated_source: String,
     pub macros: Vec<MagpieShaderMacro>,
@@ -82,6 +83,12 @@ pub enum MagpieTextureAccess {
 pub struct MagpieSamplerBinding {
     pub name: String,
     pub register: u32,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MagpieParameterBinding {
+    pub name: String,
+    pub value_type: MagpieFxParameterType,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -119,6 +126,8 @@ fn shader_job(
     let pass_index = u32::try_from(pass_index).map_err(|_| invalid_pipeline("too many passes"))?;
     let texture_bindings = texture_bindings(pass, &package.render_plan.textures)?;
     let sampler_bindings = sampler_bindings(package)?;
+    let parameter_bindings = parameter_bindings(package)?;
+    let use_flags = MagpieUseFlags::from_uses(&package.effect.uses);
     let mut macros = vec![
         MagpieShaderMacro::value("MP_BLOCK_WIDTH", block_size[0].to_string()),
         MagpieShaderMacro::value("MP_BLOCK_HEIGHT", block_size[1].to_string()),
@@ -146,7 +155,9 @@ fn shader_job(
             base_source,
             texture_bindings: &texture_bindings,
             sampler_bindings: &sampler_bindings,
+            parameter_bindings: &parameter_bindings,
             all_passes: &package.render_plan.passes,
+            use_flags,
         },
     )?;
 
@@ -166,6 +177,7 @@ fn shader_job(
         outputs: pass.outputs.clone(),
         texture_bindings,
         sampler_bindings,
+        parameter_bindings,
         base_source: base_source.to_owned(),
         generated_source,
         macros,
@@ -191,7 +203,9 @@ fn generate_pass_source(
     let prelude = generate_shader_prelude(
         context.texture_bindings,
         context.sampler_bindings,
+        context.parameter_bindings,
         context.all_passes,
+        context.use_flags,
     );
     Ok(format!("{prelude}{}\n\n{wrapper}", context.base_source))
 }
@@ -201,7 +215,9 @@ struct PassSourceContext<'a> {
     base_source: &'a str,
     texture_bindings: &'a [MagpieTextureBinding],
     sampler_bindings: &'a [MagpieSamplerBinding],
+    parameter_bindings: &'a [MagpieParameterBinding],
     all_passes: &'a [MagpiePassPlan],
+    use_flags: MagpieUseFlags,
 }
 
 fn validate_pass_function(source: &str, pass_index: u32) -> UpscaleResult<()> {
@@ -279,20 +295,72 @@ fn sampler_bindings(package: &MagpieEffectPackage) -> UpscaleResult<Vec<MagpieSa
         .collect()
 }
 
+fn parameter_bindings(package: &MagpieEffectPackage) -> UpscaleResult<Vec<MagpieParameterBinding>> {
+    package
+        .effect
+        .parameters
+        .iter()
+        .map(parameter_binding)
+        .collect()
+}
+
+fn parameter_binding(parameter: &MagpieFxParameter) -> UpscaleResult<MagpieParameterBinding> {
+    if parameter.value_type == MagpieFxParameterType::Unknown {
+        return Err(invalid_pipeline(format!(
+            "Magpie parameter {} has unsupported type",
+            parameter.symbol
+        )));
+    }
+    Ok(MagpieParameterBinding {
+        name: parameter.symbol.clone(),
+        value_type: parameter.value_type,
+    })
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct MagpieUseFlags {
+    dynamic: bool,
+    mul_add: bool,
+}
+
+impl MagpieUseFlags {
+    fn from_uses(uses: &[String]) -> Self {
+        uses.iter().fold(Self::default(), |mut flags, value| {
+            match value.to_ascii_uppercase().as_str() {
+                "MULADD" => flags.mul_add = true,
+                "_DYNAMIC" | "DYNAMIC" => flags.dynamic = true,
+                _ => {}
+            }
+            flags
+        })
+    }
+}
+
 fn generate_shader_prelude(
     texture_bindings: &[MagpieTextureBinding],
     sampler_bindings: &[MagpieSamplerBinding],
+    parameter_bindings: &[MagpieParameterBinding],
     all_passes: &[MagpiePassPlan],
+    use_flags: MagpieUseFlags,
 ) -> String {
     let mut source = String::new();
-    source.push_str(&constant_buffer_source(all_passes));
+    source.push_str(&constant_buffer_source(all_passes, parameter_bindings));
+    if use_flags.dynamic {
+        source.push_str("cbuffer __CB2 : register(b1) { uint __frameCount; };\n\n");
+    }
     append_resource_declarations(&mut source, texture_bindings, sampler_bindings);
     source.push_str(BUILTIN_FUNCTIONS);
+    if use_flags.mul_add {
+        source.push_str(MUL_ADD_FUNCTIONS);
+    }
     source.push('\n');
     source
 }
 
-fn constant_buffer_source(all_passes: &[MagpiePassPlan]) -> String {
+fn constant_buffer_source(
+    all_passes: &[MagpiePassPlan],
+    parameter_bindings: &[MagpieParameterBinding],
+) -> String {
     let mut source = String::from(
         "cbuffer __CB1 : register(b0) {\n\
     uint2 __inputSize;\n\
@@ -315,8 +383,24 @@ fn constant_buffer_source(all_passes: &[MagpiePassPlan]) -> String {
             .expect("writing to String cannot fail");
         }
     }
+    for parameter in parameter_bindings {
+        writeln!(
+            &mut source,
+            "    {} {};",
+            hlsl_parameter_type(parameter.value_type),
+            parameter.name
+        )
+        .expect("writing to String cannot fail");
+    }
     source.push_str("};\n\n");
     source
+}
+
+fn hlsl_parameter_type(value_type: MagpieFxParameterType) -> &'static str {
+    match value_type {
+        MagpieFxParameterType::Float | MagpieFxParameterType::Unknown => "float",
+        MagpieFxParameterType::Int => "int",
+    }
 }
 
 fn append_resource_declarations(
@@ -396,6 +480,71 @@ float2 GetInputPt() { return __inputPt; }
 uint2 GetOutputSize() { return __outputSize; }
 float2 GetOutputPt() { return __outputPt; }
 float2 GetScale() { return __scale; }
+";
+
+const MUL_ADD_FUNCTIONS: &str = r"MF2 MulAdd(MF2 x, MF2x2 y, MF2 a) {
+    MF2 result = a;
+    result = mad(x.x, y._m00_m01, result);
+    result = mad(x.y, y._m10_m11, result);
+    return result;
+}
+MF3 MulAdd(MF2 x, MF2x3 y, MF3 a) {
+    MF3 result = a;
+    result = mad(x.x, y._m00_m01_m02, result);
+    result = mad(x.y, y._m10_m11_m12, result);
+    return result;
+}
+MF4 MulAdd(MF2 x, MF2x4 y, MF4 a) {
+    MF4 result = a;
+    result = mad(x.x, y._m00_m01_m02_m03, result);
+    result = mad(x.y, y._m10_m11_m12_m13, result);
+    return result;
+}
+MF2 MulAdd(MF3 x, MF3x2 y, MF2 a) {
+    MF2 result = a;
+    result = mad(x.x, y._m00_m01, result);
+    result = mad(x.y, y._m10_m11, result);
+    result = mad(x.z, y._m20_m21, result);
+    return result;
+}
+MF3 MulAdd(MF3 x, MF3x3 y, MF3 a) {
+    MF3 result = a;
+    result = mad(x.x, y._m00_m01_m02, result);
+    result = mad(x.y, y._m10_m11_m12, result);
+    result = mad(x.z, y._m20_m21_m22, result);
+    return result;
+}
+MF4 MulAdd(MF3 x, MF3x4 y, MF4 a) {
+    MF4 result = a;
+    result = mad(x.x, y._m00_m01_m02_m03, result);
+    result = mad(x.y, y._m10_m11_m12_m13, result);
+    result = mad(x.z, y._m20_m21_m22_m23, result);
+    return result;
+}
+MF2 MulAdd(MF4 x, MF4x2 y, MF2 a) {
+    MF2 result = a;
+    result = mad(x.x, y._m00_m01, result);
+    result = mad(x.y, y._m10_m11, result);
+    result = mad(x.z, y._m20_m21, result);
+    result = mad(x.w, y._m30_m31, result);
+    return result;
+}
+MF3 MulAdd(MF4 x, MF4x3 y, MF3 a) {
+    MF3 result = a;
+    result = mad(x.x, y._m00_m01_m02, result);
+    result = mad(x.y, y._m10_m11_m12, result);
+    result = mad(x.z, y._m20_m21_m22, result);
+    result = mad(x.w, y._m30_m31_m32, result);
+    return result;
+}
+MF4 MulAdd(MF4 x, MF4x4 y, MF4 a) {
+    MF4 result = a;
+    result = mad(x.x, y._m00_m01_m02_m03, result);
+    result = mad(x.y, y._m10_m11_m12_m13, result);
+    result = mad(x.z, y._m20_m21_m22_m23, result);
+    result = mad(x.w, y._m30_m31_m32_m33, result);
+    return result;
+}
 ";
 
 fn generate_compute_style_entry(
@@ -686,7 +835,22 @@ float4 Pass1(float2 pos) { return 1; }
             r"
 //!MAGPIE EFFECT
 //!VERSION 4
+//!USE MulAdd, _DYNAMIC
 //!CAPABILITY FP16
+//!PARAMETER
+//!LABEL Sharpness
+//!DEFAULT 1
+//!MIN 0
+//!MAX 2
+//!STEP 0.1
+float sharpness;
+//!PARAMETER
+//!LABEL Mode
+//!DEFAULT 1
+//!MIN 0
+//!MAX 3
+//!STEP 1
+int mode;
 //!TEXTURE
 Texture2D INPUT;
 //!TEXTURE
@@ -714,6 +878,25 @@ void Pass1(uint2 blockStart, uint3 threadId) {}
         assert!(
             job.generated_source
                 .contains("Pass1(gid.xy * uint2(16, 8), tid)")
+        );
+        assert!(job.generated_source.contains("float sharpness;"));
+        assert!(job.generated_source.contains("int mode;"));
+        assert!(
+            job.generated_source
+                .contains("cbuffer __CB2 : register(b1) { uint __frameCount; };")
+        );
+        assert!(
+            job.generated_source
+                .contains("MF4 MulAdd(MF4 x, MF4x4 y, MF4 a)")
+        );
+        assert_eq!(job.parameter_bindings.len(), 2);
+        assert_eq!(
+            job.parameter_bindings[0].value_type,
+            MagpieFxParameterType::Float
+        );
+        assert_eq!(
+            job.parameter_bindings[1].value_type,
+            MagpieFxParameterType::Int
         );
     }
 

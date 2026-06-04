@@ -168,17 +168,26 @@ resolved `SOURCE` asset list.
 
 The parser now keeps compiler-relevant HLSL separated into prelude, `COMMON`, and per-`PASS` source
 blocks. `MagpieEffectPackage::compiler_source_for_pass` uses those blocks instead of the full effect
-file, so future resource declaration/cbuffer generation can mirror Magpie's pass-source generation
-without duplicating parsed `TEXTURE` or `SAMPLER` declarations.
+file, so resource declaration/cbuffer generation can mirror Magpie's pass-source generation without
+duplicating parsed `TEXTURE` or `SAMPLER` declarations.
 
 `MagpieCompilePlan` derives per-pass shader jobs from a package. It follows Magpie's compute-shader
 compile convention: every pass compiles through the `__M` entry point with `cs_5_0`, including
 PS-style passes, and carries Magpie macros such as `MP_BLOCK_WIDTH`, `MP_NUM_THREADS_X`, `MP_PS_STYLE`,
 `MP_FP16`, and the `MF*` float/min16float aliases.
 
-Each shader job now also carries generated HLSL source containing the include-expanded effect source
-and a per-pass `__M` wrapper skeleton. The remaining DirectX work is to complete Magpie-equivalent
-resource declarations, constant buffers, PS-style bounds handling, and the actual D3D compile call.
+Each shader job now also carries the Magpie-style binding plan and generated HLSL source:
+
+- `cbuffer __CB1 : register(b0)` for input/output size, texel size, scale, and PS-style intermediate
+  output sizes;
+- pass-local `Texture2D<T> : register(tN)` and `RWTexture2D<T> : register(uN)` declarations using
+  Magpie's format-to-texel-type table;
+- effect samplers as `SamplerState : register(sN)`;
+- built-in helpers such as `Rmp8x8`, `GetInputSize`, `GetOutputPt`, and `GetScale`;
+- Magpie-style PS pass wrapping with bounds checks and the four 8x8 sub-tile writes.
+
+The remaining DirectX work is to generate parameter constants/cbuffers fully, add optional dynamic
+frame-count and `MulAdd` helper paths, and call the actual D3D compiler/backend.
 
 ## Renderer comparison rule
 

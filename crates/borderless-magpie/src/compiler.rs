@@ -9,6 +9,7 @@ use crate::package::MagpieEffectPackage;
 use crate::plan::{MagpiePassPlan, MagpieTextureFormat, MagpieTexturePlan};
 use borderless_upscale_core::{UpscaleError, UpscaleResult};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fmt::Write as _;
 
 pub const MAGPIE_ENTRY_POINT: &str = "__M";
@@ -22,6 +23,13 @@ pub struct MagpieCompilePlan {
 
 impl MagpieCompilePlan {
     pub fn from_package(package: &MagpieEffectPackage) -> UpscaleResult<Self> {
+        Self::from_package_with_options(package, &MagpieCompileOptions::default())
+    }
+
+    pub fn from_package_with_options(
+        package: &MagpieEffectPackage,
+        options: &MagpieCompileOptions,
+    ) -> UpscaleResult<Self> {
         let source_name = package
             .effect_path
             .file_name()
@@ -35,12 +43,24 @@ impl MagpieCompilePlan {
             .enumerate()
             .map(|(index, pass)| {
                 let base_source = package.compiler_source_for_pass(index + 1)?;
-                shader_job(index + 1, pass, &base_source, package)
+                shader_job(index + 1, pass, &base_source, package, options)
             })
             .collect::<UpscaleResult<Vec<_>>>()?;
 
         Ok(Self { source_name, jobs })
     }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MagpieCompileOptions {
+    pub inline_parameters: bool,
+    pub parameter_overrides: Vec<MagpieParameterOverride>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MagpieParameterOverride {
+    pub name: String,
+    pub literal: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -58,6 +78,7 @@ pub struct MagpieShaderJob {
     pub texture_bindings: Vec<MagpieTextureBinding>,
     pub sampler_bindings: Vec<MagpieSamplerBinding>,
     pub parameter_bindings: Vec<MagpieParameterBinding>,
+    pub inline_parameters: Vec<MagpieInlineParameterConstant>,
     pub base_source: String,
     pub generated_source: String,
     pub macros: Vec<MagpieShaderMacro>,
@@ -92,6 +113,13 @@ pub struct MagpieParameterBinding {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MagpieInlineParameterConstant {
+    pub name: String,
+    pub value_type: MagpieFxParameterType,
+    pub literal: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MagpieShaderMacro {
     pub name: String,
     pub value: Option<String>,
@@ -120,13 +148,14 @@ fn shader_job(
     pass: &MagpiePassPlan,
     base_source: &str,
     package: &MagpieEffectPackage,
+    options: &MagpieCompileOptions,
 ) -> UpscaleResult<MagpieShaderJob> {
     let block_size = normalized_block_size(pass)?;
     let num_threads = normalized_num_threads(pass)?;
     let pass_index = u32::try_from(pass_index).map_err(|_| invalid_pipeline("too many passes"))?;
     let texture_bindings = texture_bindings(pass, &package.render_plan.textures)?;
     let sampler_bindings = sampler_bindings(package)?;
-    let parameter_bindings = parameter_bindings(package)?;
+    let parameter_plan = parameter_plan(package, options)?;
     let use_flags = MagpieUseFlags::from_uses(&package.effect.uses);
     let mut macros = vec![
         MagpieShaderMacro::value("MP_BLOCK_WIDTH", block_size[0].to_string()),
@@ -137,6 +166,9 @@ fn shader_job(
     ];
     if pass.style == MagpieFxPassStyle::PixelShader {
         macros.push(MagpieShaderMacro::define("MP_PS_STYLE"));
+    }
+    if options.inline_parameters {
+        macros.push(MagpieShaderMacro::define("MP_INLINE_PARAMS"));
     }
     extend_float_macros(
         &mut macros,
@@ -155,7 +187,8 @@ fn shader_job(
             base_source,
             texture_bindings: &texture_bindings,
             sampler_bindings: &sampler_bindings,
-            parameter_bindings: &parameter_bindings,
+            parameter_bindings: &parameter_plan.bindings,
+            inline_parameters: &parameter_plan.inline_constants,
             all_passes: &package.render_plan.passes,
             use_flags,
         },
@@ -177,7 +210,8 @@ fn shader_job(
         outputs: pass.outputs.clone(),
         texture_bindings,
         sampler_bindings,
-        parameter_bindings,
+        parameter_bindings: parameter_plan.bindings,
+        inline_parameters: parameter_plan.inline_constants,
         base_source: base_source.to_owned(),
         generated_source,
         macros,
@@ -204,6 +238,7 @@ fn generate_pass_source(
         context.texture_bindings,
         context.sampler_bindings,
         context.parameter_bindings,
+        context.inline_parameters,
         context.all_passes,
         context.use_flags,
     );
@@ -216,6 +251,7 @@ struct PassSourceContext<'a> {
     texture_bindings: &'a [MagpieTextureBinding],
     sampler_bindings: &'a [MagpieSamplerBinding],
     parameter_bindings: &'a [MagpieParameterBinding],
+    inline_parameters: &'a [MagpieInlineParameterConstant],
     all_passes: &'a [MagpiePassPlan],
     use_flags: MagpieUseFlags,
 }
@@ -295,13 +331,39 @@ fn sampler_bindings(package: &MagpieEffectPackage) -> UpscaleResult<Vec<MagpieSa
         .collect()
 }
 
-fn parameter_bindings(package: &MagpieEffectPackage) -> UpscaleResult<Vec<MagpieParameterBinding>> {
-    package
+fn parameter_plan(
+    package: &MagpieEffectPackage,
+    options: &MagpieCompileOptions,
+) -> UpscaleResult<MagpieParameterPlan> {
+    if options.inline_parameters {
+        validate_parameter_overrides(&package.effect.parameters, &options.parameter_overrides)?;
+        let inline_constants = package
+            .effect
+            .parameters
+            .iter()
+            .map(|parameter| inline_parameter_constant(parameter, options))
+            .collect::<UpscaleResult<Vec<_>>>()?;
+        return Ok(MagpieParameterPlan {
+            bindings: Vec::new(),
+            inline_constants,
+        });
+    }
+    let bindings = package
         .effect
         .parameters
         .iter()
         .map(parameter_binding)
-        .collect()
+        .collect::<UpscaleResult<Vec<_>>>()?;
+    Ok(MagpieParameterPlan {
+        bindings,
+        inline_constants: Vec::new(),
+    })
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct MagpieParameterPlan {
+    bindings: Vec<MagpieParameterBinding>,
+    inline_constants: Vec<MagpieInlineParameterConstant>,
 }
 
 fn parameter_binding(parameter: &MagpieFxParameter) -> UpscaleResult<MagpieParameterBinding> {
@@ -315,6 +377,65 @@ fn parameter_binding(parameter: &MagpieFxParameter) -> UpscaleResult<MagpieParam
         name: parameter.symbol.clone(),
         value_type: parameter.value_type,
     })
+}
+
+fn inline_parameter_constant(
+    parameter: &MagpieFxParameter,
+    options: &MagpieCompileOptions,
+) -> UpscaleResult<MagpieInlineParameterConstant> {
+    if parameter.value_type == MagpieFxParameterType::Unknown {
+        return Err(invalid_pipeline(format!(
+            "Magpie parameter {} has unsupported type",
+            parameter.symbol
+        )));
+    }
+    let literal = options
+        .parameter_overrides
+        .iter()
+        .find(|override_value| override_value.name == parameter.symbol)
+        .map(|override_value| override_value.literal.as_str())
+        .or(parameter.default_value.as_deref())
+        .ok_or_else(|| {
+            invalid_pipeline(format!(
+                "Magpie parameter {} is missing DEFAULT",
+                parameter.symbol
+            ))
+        })?;
+    Ok(MagpieInlineParameterConstant {
+        name: parameter.symbol.clone(),
+        value_type: parameter.value_type,
+        literal: hlsl_inline_literal(parameter.value_type, literal),
+    })
+}
+
+fn validate_parameter_overrides(
+    parameters: &[MagpieFxParameter],
+    overrides: &[MagpieParameterOverride],
+) -> UpscaleResult<()> {
+    let parameter_names = parameters
+        .iter()
+        .map(|parameter| parameter.symbol.as_str())
+        .collect::<HashSet<_>>();
+    overrides.iter().try_for_each(|override_value| {
+        parameter_names
+            .contains(override_value.name.as_str())
+            .then_some(())
+            .ok_or_else(|| {
+                invalid_pipeline(format!(
+                    "inline override references unknown Magpie parameter {}",
+                    override_value.name
+                ))
+            })
+    })
+}
+
+fn hlsl_inline_literal(value_type: MagpieFxParameterType, literal: &str) -> String {
+    let trimmed = literal.trim();
+    match value_type {
+        MagpieFxParameterType::Float if trimmed.ends_with(['f', 'F']) => trimmed.to_owned(),
+        MagpieFxParameterType::Float => format!("{trimmed}f"),
+        MagpieFxParameterType::Int | MagpieFxParameterType::Unknown => trimmed.to_owned(),
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -340,11 +461,13 @@ fn generate_shader_prelude(
     texture_bindings: &[MagpieTextureBinding],
     sampler_bindings: &[MagpieSamplerBinding],
     parameter_bindings: &[MagpieParameterBinding],
+    inline_parameters: &[MagpieInlineParameterConstant],
     all_passes: &[MagpiePassPlan],
     use_flags: MagpieUseFlags,
 ) -> String {
     let mut source = String::new();
     source.push_str(&constant_buffer_source(all_passes, parameter_bindings));
+    append_inline_parameters(&mut source, inline_parameters);
     if use_flags.dynamic {
         source.push_str("cbuffer __CB2 : register(b1) { uint __frameCount; };\n\n");
     }
@@ -355,6 +478,26 @@ fn generate_shader_prelude(
     }
     source.push('\n');
     source
+}
+
+fn append_inline_parameters(
+    source: &mut String,
+    inline_parameters: &[MagpieInlineParameterConstant],
+) {
+    if inline_parameters.is_empty() {
+        return;
+    }
+    for parameter in inline_parameters {
+        writeln!(
+            source,
+            "static const {} {} = {};",
+            hlsl_parameter_type(parameter.value_type),
+            parameter.name,
+            parameter.literal
+        )
+        .expect("writing to String cannot fail");
+    }
+    source.push('\n');
 }
 
 fn constant_buffer_source(
@@ -898,6 +1041,64 @@ void Pass1(uint2 blockStart, uint3 threadId) {}
             job.parameter_bindings[1].value_type,
             MagpieFxParameterType::Int
         );
+    }
+
+    #[test]
+    fn can_inline_parameters_as_magpie_compile_option() {
+        let package = package_from_source(
+            r"
+//!MAGPIE EFFECT
+//!VERSION 4
+//!PARAMETER
+//!LABEL Sharpness
+//!DEFAULT 1
+//!MIN 0
+//!MAX 2
+//!STEP 0.1
+float sharpness;
+//!PARAMETER
+//!LABEL Mode
+//!DEFAULT 1
+//!MIN 0
+//!MAX 3
+//!STEP 1
+int mode;
+//!TEXTURE
+Texture2D INPUT;
+//!TEXTURE
+Texture2D OUTPUT;
+//!PASS 1
+//!IN INPUT
+//!OUT OUTPUT
+//!BLOCK_SIZE 8
+//!NUM_THREADS 64
+void Pass1(uint2 blockStart, uint3 threadId) {}
+",
+        );
+        let options = MagpieCompileOptions {
+            inline_parameters: true,
+            parameter_overrides: vec![MagpieParameterOverride {
+                name: "sharpness".to_owned(),
+                literal: "1.5".to_owned(),
+            }],
+        };
+
+        let plan = MagpieCompilePlan::from_package_with_options(&package, &options).unwrap();
+        let job = &plan.jobs[0];
+
+        assert!(job.parameter_bindings.is_empty());
+        assert_eq!(job.inline_parameters.len(), 2);
+        assert!(
+            job.macros
+                .iter()
+                .any(|shader_macro| shader_macro.name == "MP_INLINE_PARAMS")
+        );
+        assert!(
+            job.generated_source
+                .contains("static const float sharpness = 1.5f;")
+        );
+        assert!(job.generated_source.contains("static const int mode = 1;"));
+        assert!(!job.generated_source.contains("    float sharpness;"));
     }
 
     fn package_from_source(source: &str) -> MagpieEffectPackage {

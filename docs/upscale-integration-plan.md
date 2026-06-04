@@ -188,8 +188,13 @@ Each shader job now also carries the Magpie-style binding plan and generated HLS
 - `USE MulAdd` helper overloads using `mad`;
 - Magpie-style PS pass wrapping with bounds checks and the four 8x8 sub-tile writes.
 
-The remaining DirectX work is to support inline parameter constants as an alternate compile mode,
-add any remaining optional helper paths, and call the actual D3D compiler/backend.
+`MagpieCompileOptions` can now switch parameters from cbuffer fields to Magpie-style inline
+`static const` values. Overrides are validated against the parsed parameter list, default values are
+used when no override is supplied, and jobs carry the `MP_INLINE_PARAMS` macro when this mode is
+enabled.
+
+The remaining DirectX work is to add any remaining optional helper paths and call the actual D3D
+compiler/backend.
 
 ## Renderer comparison rule
 

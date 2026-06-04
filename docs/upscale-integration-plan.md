@@ -232,13 +232,13 @@ optional `_DYNAMIC` frame-count CB2 payload.
 
 `MagpieTextureAllocationPlan` validates that renderer-owned textures have concrete sizes and records
 their usage flags plus read/write pass lifetimes. `MagpieResourcePlan` now carries these allocations
-alongside CBV/SRV/UAV/sampler bindings so a renderer can create the texture pool before interpreting
-the execution commands.
+alongside CBV/SRV/UAV bindings and sampler descriptors, including filter/address mode, so a renderer
+can create the texture and sampler pools before interpreting the execution commands.
 
 `MagpieResourcePlan` is the renderer handoff shape for the next DirectX/wgpu slice. It combines the
 per-pass compile jobs, dispatch groups, CB1/optional CB2 bindings, SRV/UAV texture bindings, and
-sampler bindings without depending on a concrete D3D or wgpu API. That gives both renderer paths the
-same Magpie-compatible resource order to execute.
+sampler descriptors without depending on a concrete D3D or wgpu API. That gives both renderer paths
+the same Magpie-compatible resource order to execute.
 
 The remaining DirectX work is to add any remaining optional helper paths and wire the compiled
 bytecode into the actual D3D renderer/backend.

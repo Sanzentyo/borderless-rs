@@ -13,6 +13,7 @@ use crate::constants::{
     MagpieConstantBufferOptions, MagpieConstantBufferPlan, MagpieDynamicConstantBuffer,
 };
 use crate::dispatch::{MagpieDispatchPass, MagpieDispatchPlan};
+use crate::magpiefx::{MagpieFxSamplerAddress, MagpieFxSamplerFilter};
 use crate::package::MagpieEffectPackage;
 use crate::plan::{MagpieTextureFormat, MagpieTexturePlan, MagpieTextureRole};
 use borderless_upscale_core::{FrameSize, UpscaleError, UpscaleResult};
@@ -129,6 +130,8 @@ pub struct MagpieTextureResourceBinding {
 pub struct MagpieSamplerResourceBinding {
     pub name: String,
     pub register: u32,
+    pub filter: MagpieFxSamplerFilter,
+    pub address: MagpieFxSamplerAddress,
 }
 
 fn resource_pass(
@@ -146,14 +149,7 @@ fn resource_pass(
         package,
         MagpieTextureAccess::UnorderedAccess,
     )?;
-    let samplers = job
-        .sampler_bindings
-        .iter()
-        .map(|sampler| MagpieSamplerResourceBinding {
-            name: sampler.name.clone(),
-            register: sampler.register,
-        })
-        .collect();
+    let samplers = sampler_resources(job, package)?;
 
     Ok(MagpieResourcePass {
         pass_index: job.pass_index,
@@ -163,6 +159,29 @@ fn resource_pass(
         samplers,
         dispatch: dispatch.clone(),
     })
+}
+
+fn sampler_resources(
+    job: &MagpieShaderJob,
+    package: &MagpieEffectPackage,
+) -> UpscaleResult<Vec<MagpieSamplerResourceBinding>> {
+    job.sampler_bindings
+        .iter()
+        .map(|binding| {
+            let sampler = package
+                .effect
+                .samplers
+                .iter()
+                .find(|sampler| sampler.name == binding.name)
+                .ok_or_else(|| invalid_pipeline(format!("missing sampler {}", binding.name)))?;
+            Ok(MagpieSamplerResourceBinding {
+                name: binding.name.clone(),
+                register: binding.register,
+                filter: sampler.filter,
+                address: sampler.address,
+            })
+        })
+        .collect()
 }
 
 fn texture_resources(
@@ -251,6 +270,7 @@ Texture2D tex1;
 Texture2D OUTPUT;
 //!SAMPLER
 //!FILTER POINT
+//!ADDRESS WRAP
 SamplerState POINT;
 //!PASS 1
 //!STYLE PS
@@ -281,6 +301,14 @@ void Pass2(uint2 pos) { OUTPUT[pos] = tex1[pos]; }
         assert_eq!(plan.passes[0].unordered_access_views[0].name, "tex1");
         assert_eq!(plan.passes[0].unordered_access_views[0].register, 0);
         assert_eq!(plan.passes[0].samplers[0].name, "POINT");
+        assert_eq!(
+            plan.passes[0].samplers[0].filter,
+            MagpieFxSamplerFilter::Point
+        );
+        assert_eq!(
+            plan.passes[0].samplers[0].address,
+            MagpieFxSamplerAddress::Wrap
+        );
         assert_eq!(plan.passes[0].dispatch.group_count, [20, 15, 1]);
         assert_eq!(plan.passes[1].dispatch.block_size, [8, 8]);
         assert_eq!(plan.passes[1].dispatch.group_count, [80, 60, 1]);

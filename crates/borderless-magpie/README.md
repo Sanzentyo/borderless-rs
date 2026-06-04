@@ -36,7 +36,7 @@ Current ported pieces include:
 - `MagpieConstantBufferPlan`, which mirrors Magpie's CB1 dword layout for builtin constants,
   non-final PS-style pass size constants, and non-inline effect parameters.
 - `MagpieResourcePlan`, which combines compile jobs, dispatch groups, CB1/CB2 bindings, SRV/UAV
-  texture bindings, and sampler bindings into the renderer handoff shape.
+  texture bindings, and sampler descriptors into the renderer handoff shape.
 - `MagpieTextureAllocationPlan`, which resolves renderer texture allocations, usage flags, and
   read/write pass lifetimes.
 

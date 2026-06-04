@@ -62,4 +62,9 @@ pub use resources::{
 };
 pub use upload::{MagpieSourceUpload, MagpieSourceUploadPlan};
 #[cfg(feature = "wgpu-compare")]
-pub use wgpu_bridge::MagpieWgpuDescriptorPlan;
+pub use wgpu_bridge::{
+    MAGPIE_WGPU_CONSTANT_BINDING_BASE, MAGPIE_WGPU_SAMPLER_BINDING_BASE,
+    MAGPIE_WGPU_SHADER_RESOURCE_BINDING_BASE, MAGPIE_WGPU_UNORDERED_ACCESS_BINDING_BASE,
+    MagpieWgpuBinding, MagpieWgpuBindingKind, MagpieWgpuBindingLayoutPlan,
+    MagpieWgpuDescriptorPlan, MagpieWgpuPassLayout,
+};

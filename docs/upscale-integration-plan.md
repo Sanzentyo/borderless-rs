@@ -259,6 +259,11 @@ before native DirectX or wgpu-specific object creation.
 Behind `wgpu-compare`, `MagpieWgpuDescriptorPlan` converts those backend descriptors into
 `wgpu::TextureDescriptor`, `wgpu::BufferDescriptor`, and `wgpu::SamplerDescriptor` values. The
 mapping remains explicit: unsupported raw DXGI formats are rejected until a wgpu equivalent is added.
+`MagpieWgpuBindingLayoutPlan` then converts each pass's CBV/SRV/UAV/sampler handoff into
+`wgpu::BindGroupLayoutEntry` values. Because Magpie's HLSL resources use separate `b`, `t`, `u`, and
+`s` register spaces while wgpu uses one binding namespace per group, the bridge reserves disjoint
+binding bases for each class. The shader translation slice must use the same bases when generating
+WGSL bindings.
 
 `MagpieResourcePlan` is the renderer handoff shape for the next DirectX/wgpu slice. It combines the
 per-pass compile jobs, dispatch groups, CB1/optional CB2 bindings, SRV/UAV texture bindings, and

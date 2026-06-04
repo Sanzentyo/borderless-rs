@@ -47,6 +47,9 @@ Current ported pieces include:
   descriptors ready for native DirectX or wgpu-specific translation.
 - `MagpieWgpuDescriptorPlan` behind `wgpu-compare`, which converts backend descriptors into wgpu
   texture, buffer, and sampler descriptors for the comparison renderer path.
+- `MagpieWgpuBindingLayoutPlan` behind `wgpu-compare`, which converts each pass's CBV/SRV/UAV
+  and sampler resources into wgpu bind group layout entries. HLSL register classes are assigned
+  disjoint wgpu binding bases so `b0`, `t0`, `u0`, and `s0` do not collide.
 
 Bundled shader/effect assets are intentionally feature-gated and must carry per-file SPDX headers
 from their original source. Some Magpie effect files have their own notices, so they should not be

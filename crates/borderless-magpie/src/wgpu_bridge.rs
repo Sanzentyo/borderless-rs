@@ -8,9 +8,19 @@ use crate::backend::{
     MagpieBackendBufferDescriptor, MagpieBackendDescriptorPlan, MagpieBackendSamplerDescriptor,
     MagpieBackendTextureBind, MagpieBackendTextureDescriptor,
 };
+use crate::formats::MagpieTextureComponent;
 use crate::magpiefx::{MagpieFxSamplerAddress, MagpieFxSamplerFilter};
 use crate::plan::MagpieTextureFormat;
+use crate::resources::{
+    MagpieConstantBufferBinding, MagpieResourcePass, MagpieResourcePlan,
+    MagpieSamplerResourceBinding, MagpieTextureResourceBinding,
+};
 use borderless_upscale_core::{UpscaleError, UpscaleResult};
+
+pub const MAGPIE_WGPU_CONSTANT_BINDING_BASE: u32 = 0;
+pub const MAGPIE_WGPU_SHADER_RESOURCE_BINDING_BASE: u32 = 32;
+pub const MAGPIE_WGPU_UNORDERED_ACCESS_BINDING_BASE: u32 = 64;
+pub const MAGPIE_WGPU_SAMPLER_BINDING_BASE: u32 = 96;
 
 pub struct MagpieWgpuDescriptorPlan<'a> {
     pub textures: Vec<wgpu::TextureDescriptor<'a>>,
@@ -44,6 +54,54 @@ impl<'a> MagpieWgpuDescriptorPlan<'a> {
             samplers,
         })
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MagpieWgpuBindingLayoutPlan {
+    pub passes: Vec<MagpieWgpuPassLayout>,
+}
+
+impl MagpieWgpuBindingLayoutPlan {
+    pub fn from_resource_plan(resources: &MagpieResourcePlan) -> UpscaleResult<Self> {
+        let passes = resources
+            .passes
+            .iter()
+            .map(|pass| wgpu_pass_layout(resources, pass))
+            .collect::<UpscaleResult<Vec<_>>>()?;
+
+        Ok(Self { passes })
+    }
+
+    #[must_use]
+    pub fn pass(&self, pass_index: u32) -> Option<&MagpieWgpuPassLayout> {
+        self.passes
+            .iter()
+            .find(|pass| pass.pass_index == pass_index)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MagpieWgpuPassLayout {
+    pub pass_index: u32,
+    pub pass_name: String,
+    pub bindings: Vec<MagpieWgpuBinding>,
+    pub entries: Vec<wgpu::BindGroupLayoutEntry>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MagpieWgpuBinding {
+    pub name: String,
+    pub register: u32,
+    pub binding: u32,
+    pub kind: MagpieWgpuBindingKind,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MagpieWgpuBindingKind {
+    ConstantBuffer,
+    ShaderResource,
+    UnorderedAccess,
+    Sampler,
 }
 
 pub fn wgpu_texture_descriptor(
@@ -120,6 +178,213 @@ fn wgpu_texture_format(format: &MagpieTextureFormat) -> UpscaleResult<wgpu::Text
     }
 }
 
+fn wgpu_pass_layout(
+    resources: &MagpieResourcePlan,
+    pass: &MagpieResourcePass,
+) -> UpscaleResult<MagpieWgpuPassLayout> {
+    let constant_buffers = std::iter::once(&resources.constant_buffer)
+        .chain(resources.dynamic_constant_buffer.iter())
+        .map(wgpu_constant_buffer_binding);
+    let shader_resources = pass
+        .shader_resources
+        .iter()
+        .map(wgpu_shader_resource_binding);
+    let unordered_access_views = pass
+        .unordered_access_views
+        .iter()
+        .map(wgpu_unordered_access_binding);
+    let samplers = pass.samplers.iter().map(wgpu_sampler_binding);
+    let bindings = constant_buffers
+        .chain(shader_resources)
+        .chain(unordered_access_views)
+        .chain(samplers)
+        .collect::<UpscaleResult<Vec<_>>>()?;
+    let entries = bindings
+        .iter()
+        .map(|binding| wgpu_bind_group_layout_entry(resources, pass, binding))
+        .collect::<UpscaleResult<Vec<_>>>()?;
+
+    Ok(MagpieWgpuPassLayout {
+        pass_index: pass.pass_index,
+        pass_name: pass.pass_name.clone(),
+        bindings,
+        entries,
+    })
+}
+
+fn wgpu_constant_buffer_binding(
+    binding: &MagpieConstantBufferBinding,
+) -> UpscaleResult<MagpieWgpuBinding> {
+    Ok(MagpieWgpuBinding {
+        name: binding.name.clone(),
+        register: binding.register,
+        binding: binding_index(MAGPIE_WGPU_CONSTANT_BINDING_BASE, binding.register)?,
+        kind: MagpieWgpuBindingKind::ConstantBuffer,
+    })
+}
+
+fn wgpu_shader_resource_binding(
+    binding: &MagpieTextureResourceBinding,
+) -> UpscaleResult<MagpieWgpuBinding> {
+    Ok(MagpieWgpuBinding {
+        name: binding.name.clone(),
+        register: binding.register,
+        binding: binding_index(MAGPIE_WGPU_SHADER_RESOURCE_BINDING_BASE, binding.register)?,
+        kind: MagpieWgpuBindingKind::ShaderResource,
+    })
+}
+
+fn wgpu_unordered_access_binding(
+    binding: &MagpieTextureResourceBinding,
+) -> UpscaleResult<MagpieWgpuBinding> {
+    Ok(MagpieWgpuBinding {
+        name: binding.name.clone(),
+        register: binding.register,
+        binding: binding_index(MAGPIE_WGPU_UNORDERED_ACCESS_BINDING_BASE, binding.register)?,
+        kind: MagpieWgpuBindingKind::UnorderedAccess,
+    })
+}
+
+fn wgpu_sampler_binding(
+    binding: &MagpieSamplerResourceBinding,
+) -> UpscaleResult<MagpieWgpuBinding> {
+    Ok(MagpieWgpuBinding {
+        name: binding.name.clone(),
+        register: binding.register,
+        binding: binding_index(MAGPIE_WGPU_SAMPLER_BINDING_BASE, binding.register)?,
+        kind: MagpieWgpuBindingKind::Sampler,
+    })
+}
+
+fn binding_index(base: u32, register: u32) -> UpscaleResult<u32> {
+    base.checked_add(register)
+        .ok_or_else(|| invalid_pipeline("Magpie wgpu binding index overflowed"))
+}
+
+fn wgpu_bind_group_layout_entry(
+    resources: &MagpieResourcePlan,
+    pass: &MagpieResourcePass,
+    binding: &MagpieWgpuBinding,
+) -> UpscaleResult<wgpu::BindGroupLayoutEntry> {
+    Ok(wgpu::BindGroupLayoutEntry {
+        binding: binding.binding,
+        visibility: wgpu::ShaderStages::COMPUTE,
+        ty: wgpu_binding_type(resources, pass, binding)?,
+        count: None,
+    })
+}
+
+fn wgpu_binding_type(
+    resources: &MagpieResourcePlan,
+    pass: &MagpieResourcePass,
+    binding: &MagpieWgpuBinding,
+) -> UpscaleResult<wgpu::BindingType> {
+    match binding.kind {
+        MagpieWgpuBindingKind::ConstantBuffer => {
+            let buffer = constant_buffer_by_name(resources, &binding.name)?;
+            Ok(wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: wgpu::BufferSize::new(buffer.byte_len as u64),
+            })
+        }
+        MagpieWgpuBindingKind::ShaderResource => {
+            let texture = shader_resource_by_name(pass, &binding.name)?;
+            Ok(wgpu::BindingType::Texture {
+                sample_type: wgpu_texture_sample_type(&texture.format),
+                view_dimension: wgpu::TextureViewDimension::D2,
+                multisampled: false,
+            })
+        }
+        MagpieWgpuBindingKind::UnorderedAccess => {
+            let texture = unordered_access_by_name(pass, &binding.name)?;
+            Ok(wgpu::BindingType::StorageTexture {
+                access: wgpu::StorageTextureAccess::WriteOnly,
+                format: wgpu_texture_format(&texture.format)?,
+                view_dimension: wgpu::TextureViewDimension::D2,
+            })
+        }
+        MagpieWgpuBindingKind::Sampler => {
+            let sampler = sampler_by_name(pass, &binding.name)?;
+            Ok(wgpu::BindingType::Sampler(wgpu_sampler_binding_type(
+                sampler.filter,
+            )))
+        }
+    }
+}
+
+fn constant_buffer_by_name<'a>(
+    resources: &'a MagpieResourcePlan,
+    name: &str,
+) -> UpscaleResult<&'a MagpieConstantBufferBinding> {
+    std::iter::once(&resources.constant_buffer)
+        .chain(resources.dynamic_constant_buffer.iter())
+        .find(|buffer| buffer.name == name)
+        .ok_or_else(|| invalid_pipeline(format!("missing Magpie constant buffer {name}")))
+}
+
+fn shader_resource_by_name<'a>(
+    pass: &'a MagpieResourcePass,
+    name: &str,
+) -> UpscaleResult<&'a MagpieTextureResourceBinding> {
+    pass.shader_resources
+        .iter()
+        .find(|texture| texture.name == name)
+        .ok_or_else(|| invalid_pipeline(format!("missing Magpie shader resource {name}")))
+}
+
+fn unordered_access_by_name<'a>(
+    pass: &'a MagpieResourcePass,
+    name: &str,
+) -> UpscaleResult<&'a MagpieTextureResourceBinding> {
+    pass.unordered_access_views
+        .iter()
+        .find(|texture| texture.name == name)
+        .ok_or_else(|| invalid_pipeline(format!("missing Magpie unordered access view {name}")))
+}
+
+fn sampler_by_name<'a>(
+    pass: &'a MagpieResourcePass,
+    name: &str,
+) -> UpscaleResult<&'a MagpieSamplerResourceBinding> {
+    pass.samplers
+        .iter()
+        .find(|sampler| sampler.name == name)
+        .ok_or_else(|| invalid_pipeline(format!("missing Magpie sampler {name}")))
+}
+
+fn wgpu_texture_sample_type(format: &MagpieTextureFormat) -> wgpu::TextureSampleType {
+    match format.descriptor().component {
+        MagpieTextureComponent::Float
+        | MagpieTextureComponent::Unorm
+        | MagpieTextureComponent::Snorm
+        | MagpieTextureComponent::Unknown => wgpu::TextureSampleType::Float {
+            filterable: wgpu_filterable_texture(format),
+        },
+    }
+}
+
+fn wgpu_filterable_texture(format: &MagpieTextureFormat) -> bool {
+    matches!(
+        format,
+        MagpieTextureFormat::R8Unorm
+            | MagpieTextureFormat::R8g8Unorm
+            | MagpieTextureFormat::R8g8b8a8Unorm
+            | MagpieTextureFormat::R8g8b8a8UnormSrgb
+            | MagpieTextureFormat::R8g8b8a8Snorm
+            | MagpieTextureFormat::R16Float
+            | MagpieTextureFormat::R16g16Float
+            | MagpieTextureFormat::R16g16b16a16Float
+    )
+}
+
+fn wgpu_sampler_binding_type(filter: MagpieFxSamplerFilter) -> wgpu::SamplerBindingType {
+    match filter {
+        MagpieFxSamplerFilter::Point => wgpu::SamplerBindingType::NonFiltering,
+        MagpieFxSamplerFilter::Linear => wgpu::SamplerBindingType::Filtering,
+    }
+}
+
 fn wgpu_texture_usages(bind_flags: &[MagpieBackendTextureBind]) -> wgpu::TextureUsages {
     bind_flags
         .iter()
@@ -167,8 +432,12 @@ mod tests {
     use crate::formats::MagpieTextureComponent;
     use crate::formats::MagpieTextureFormatDescriptor;
     use crate::magpiefx::{MagpieFxSamplerAddress, MagpieFxSamplerFilter};
+    use crate::package::MagpieEffectPackage;
+    use crate::plan::MagpieRenderPlan;
     use crate::plan::MagpieTextureFormat;
+    use crate::resources::MagpieResourcePlan;
     use borderless_upscale_core::FrameSize;
+    use std::path::PathBuf;
 
     #[test]
     fn maps_texture_buffer_and_sampler_descriptors_to_wgpu() {
@@ -211,6 +480,73 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn maps_pass_resources_to_wgpu_bind_group_layout_entries() {
+        let package = package(
+            r"
+//!MAGPIE EFFECT
+//!VERSION 4
+//!USE _DYNAMIC
+//!TEXTURE
+Texture2D INPUT;
+//!TEXTURE
+//!WIDTH INPUT_WIDTH
+//!HEIGHT INPUT_HEIGHT
+Texture2D tex1;
+//!TEXTURE
+Texture2D OUTPUT;
+//!SAMPLER
+//!FILTER LINEAR
+//!ADDRESS CLAMP
+SamplerState LINEAR;
+//!PASS 1
+//!STYLE PS
+//!IN INPUT
+//!OUT tex1
+//!DESC Copy
+MF4 Pass1(float2 pos) { return INPUT.Sample(LINEAR, pos); }
+//!PASS 2
+//!IN tex1
+//!OUT OUTPUT
+//!BLOCK_SIZE 8
+//!NUM_THREADS 64
+void Pass2(uint2 pos) { OUTPUT[pos] = tex1[pos]; }
+",
+        );
+        let resources = MagpieResourcePlan::from_package(&package).unwrap();
+
+        let plan = MagpieWgpuBindingLayoutPlan::from_resource_plan(&resources).unwrap();
+        let pass = plan.pass(1).unwrap();
+
+        assert_eq!(pass.pass_name, "Copy");
+        assert_eq!(pass.bindings.len(), 5);
+        assert!(pass.entries.iter().any(|entry| {
+            entry.binding == MAGPIE_WGPU_CONSTANT_BINDING_BASE
+                && matches!(
+                    entry.ty,
+                    wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        ..
+                    }
+                )
+        }));
+        assert!(pass.entries.iter().any(|entry| {
+            entry.binding == MAGPIE_WGPU_SHADER_RESOURCE_BINDING_BASE
+                && matches!(entry.ty, wgpu::BindingType::Texture { .. })
+        }));
+        assert!(pass.entries.iter().any(|entry| {
+            entry.binding == MAGPIE_WGPU_UNORDERED_ACCESS_BINDING_BASE
+                && matches!(entry.ty, wgpu::BindingType::StorageTexture { .. })
+        }));
+        assert!(pass.entries.iter().any(|entry| {
+            entry.binding == MAGPIE_WGPU_SAMPLER_BINDING_BASE
+                && matches!(
+                    entry.ty,
+                    wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering)
+                )
+        }));
+    }
+
     fn texture_descriptor() -> MagpieBackendTextureDescriptor {
         MagpieBackendTextureDescriptor {
             name: "OUTPUT".to_owned(),
@@ -230,6 +566,28 @@ mod tests {
                 MagpieBackendTextureBind::ShaderResource,
                 MagpieBackendTextureBind::UnorderedAccess,
             ],
+        }
+    }
+
+    fn package(source: &str) -> MagpieEffectPackage {
+        let effect = crate::magpiefx::parse_magpiefx(source).unwrap();
+        let input_size = FrameSize::new(320, 240).unwrap();
+        let output_size = FrameSize::new(640, 480).unwrap();
+        let render_plan = MagpieRenderPlan::from_effect(&effect, input_size, output_size).unwrap();
+        MagpieEffectPackage {
+            effect_path: PathBuf::from("test.hlsl"),
+            compiler_source: effect.hlsl_source.clone(),
+            compiler_prelude_source: effect.prelude_source.clone(),
+            compiler_common_source: effect.common_source.clone(),
+            compiler_pass_sources: effect
+                .passes
+                .iter()
+                .map(|pass| pass.source.clone())
+                .collect(),
+            effect,
+            render_plan,
+            includes: Vec::new(),
+            source_assets: Vec::new(),
         }
     }
 }

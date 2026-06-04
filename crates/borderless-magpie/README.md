@@ -8,6 +8,13 @@ This crate is licensed under GPL-3.0-or-later. Code in this crate that directly 
 behavior, file formats, render planning, shader semantics, or effect asset behavior inherits that GPL
 boundary.
 
+Current ported pieces include:
+
+- MagpieFX directive parsing;
+- conversion into `EffectGraph`;
+- renderer-facing `MagpieRenderPlan`;
+- Pure Rust DDS header metadata parsing for `SOURCE` textures.
+
 Reference project:
 
 - Magpie: <https://github.com/Blinue/Magpie>

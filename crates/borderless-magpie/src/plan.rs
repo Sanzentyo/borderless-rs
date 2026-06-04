@@ -2,10 +2,12 @@
 // Magpie-compatible render resource planning based on the GPL-licensed Magpie project:
 // https://github.com/Blinue/Magpie
 
-use crate::magpiefx::{MagpieFx, MagpieFxPassStyle, MagpieFxTexture};
+use crate::dds::read_dds_metadata;
+use crate::magpiefx::{MagpieFx, MagpieFxPassStyle, MagpieFxTexture, parse_magpiefx_file};
 use borderless_upscale_core::{FrameSize, UpscaleError, UpscaleResult};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::path::{Path, PathBuf};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MagpieRenderPlan {
@@ -21,10 +23,20 @@ impl MagpieRenderPlan {
         input_size: FrameSize,
         output_size: FrameSize,
     ) -> UpscaleResult<Self> {
+        Self::from_effect_with_source_dir(effect, None, input_size, output_size)
+    }
+
+    pub fn from_effect_with_source_dir(
+        effect: &MagpieFx,
+        source_dir: Option<&Path>,
+        input_size: FrameSize,
+        output_size: FrameSize,
+    ) -> UpscaleResult<Self> {
         effect.validate()?;
         let context = DimensionContext {
             input_size,
             output_size,
+            source_dir,
         };
         let textures = effect
             .textures
@@ -61,6 +73,17 @@ impl MagpieRenderPlan {
         })
     }
 
+    pub fn from_effect_file(
+        path: impl AsRef<Path>,
+        input_size: FrameSize,
+        output_size: FrameSize,
+    ) -> UpscaleResult<Self> {
+        let path = path.as_ref();
+        let effect = parse_magpiefx_file(path)?;
+        let source_dir = path.parent();
+        Self::from_effect_with_source_dir(&effect, source_dir, input_size, output_size)
+    }
+
     #[must_use]
     pub fn texture(&self, name: &str) -> Option<&MagpieTexturePlan> {
         self.textures.iter().find(|texture| texture.name == name)
@@ -74,6 +97,7 @@ pub struct MagpieTexturePlan {
     pub size: Option<FrameSize>,
     pub format: MagpieTextureFormat,
     pub source: Option<String>,
+    pub source_path: Option<PathBuf>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -92,10 +116,14 @@ pub enum MagpieTextureFormat {
     R8g8Unorm,
     #[default]
     R8g8b8a8Unorm,
+    R8g8b8a8UnormSrgb,
     R8g8b8a8Snorm,
     R16Float,
     R16g16Float,
     R16g16b16a16Float,
+    R32Float,
+    R32g32b32a32Float,
+    Dxgi(u32),
     Unknown(String),
 }
 
@@ -113,6 +141,14 @@ impl MagpieTextureFormat {
             other => Self::Unknown(other.to_owned()),
         }
     }
+
+    #[must_use]
+    pub fn from_magpiefx_or_source(value: Option<&str>, source: Option<Self>) -> Self {
+        match (value, source) {
+            (None, Some(source)) => source,
+            _ => Self::from_magpiefx(value),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -127,16 +163,22 @@ pub struct MagpiePassPlan {
 }
 
 #[derive(Clone, Copy)]
-struct DimensionContext {
+struct DimensionContext<'a> {
     input_size: FrameSize,
     output_size: FrameSize,
+    source_dir: Option<&'a Path>,
 }
 
 fn texture_plan(
     texture: &MagpieFxTexture,
-    context: DimensionContext,
+    context: DimensionContext<'_>,
 ) -> UpscaleResult<MagpieTexturePlan> {
     let role = texture_role(texture);
+    let source_path = texture
+        .source
+        .as_deref()
+        .and_then(|source| context.source_dir.map(|source_dir| source_dir.join(source)));
+    let source_metadata = source_path.as_deref().map(read_dds_metadata).transpose()?;
     let width = texture
         .width
         .as_deref()
@@ -154,7 +196,10 @@ fn texture_plan(
         ),
         (None, None, MagpieTextureRole::Input) => Some(context.input_size),
         (None, None, MagpieTextureRole::Output) => Some(context.output_size),
-        (None, None, MagpieTextureRole::SourceAsset | MagpieTextureRole::Intermediate) => None,
+        (None, None, MagpieTextureRole::SourceAsset) => {
+            source_metadata.as_ref().map(|metadata| metadata.size)
+        }
+        (None, None, MagpieTextureRole::Intermediate) => None,
         _ => {
             return Err(invalid_pipeline(format!(
                 "texture {} must specify both WIDTH and HEIGHT",
@@ -163,12 +208,17 @@ fn texture_plan(
         }
     };
 
+    let source_format = source_metadata.and_then(|metadata| metadata.format);
     Ok(MagpieTexturePlan {
         name: texture.name.clone(),
         role,
         size,
-        format: MagpieTextureFormat::from_magpiefx(texture.format.as_deref()),
+        format: MagpieTextureFormat::from_magpiefx_or_source(
+            texture.format.as_deref(),
+            source_format,
+        ),
         source: texture.source.clone(),
+        source_path,
     })
 }
 
@@ -199,7 +249,7 @@ fn validate_texture_refs(
         .collect()
 }
 
-fn eval_dimension(expr: &str, context: DimensionContext) -> UpscaleResult<u32> {
+fn eval_dimension(expr: &str, context: DimensionContext<'_>) -> UpscaleResult<u32> {
     expr.split('*').map(str::trim).try_fold(1_u32, |acc, part| {
         let value = eval_dimension_factor(part, context)?;
         acc.checked_mul(value)
@@ -207,7 +257,7 @@ fn eval_dimension(expr: &str, context: DimensionContext) -> UpscaleResult<u32> {
     })
 }
 
-fn eval_dimension_factor(part: &str, context: DimensionContext) -> UpscaleResult<u32> {
+fn eval_dimension_factor(part: &str, context: DimensionContext<'_>) -> UpscaleResult<u32> {
     match part {
         "INPUT_WIDTH" => Ok(context.input_size.width),
         "INPUT_HEIGHT" => Ok(context.input_size.height),
@@ -309,6 +359,52 @@ void Pass1() {}
     }
 
     #[test]
+    fn resolves_source_asset_metadata_from_effect_directory() {
+        let root = std::env::temp_dir().join(format!(
+            "borderless-magpie-plan-test-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("AreaTex.dds"), fake_dds_dx10(160, 560, 61)).unwrap();
+
+        let source = r"
+//!MAGPIE EFFECT
+//!VERSION 4
+//!TEXTURE
+Texture2D INPUT;
+//!TEXTURE
+Texture2D OUTPUT;
+//!TEXTURE
+//!SOURCE AreaTex.dds
+Texture2D areaTex;
+//!PASS 1
+//!IN INPUT, areaTex
+//!OUT OUTPUT
+void Pass1() {}
+";
+        let effect = parse_magpiefx(source).unwrap();
+        let plan = MagpieRenderPlan::from_effect_with_source_dir(
+            &effect,
+            Some(&root),
+            FrameSize::new(640, 480).unwrap(),
+            FrameSize::new(1280, 960).unwrap(),
+        )
+        .unwrap();
+
+        let area_tex = plan.texture("areaTex").unwrap();
+        assert_eq!(area_tex.size, FrameSize::new(160, 560));
+        assert_eq!(area_tex.format, MagpieTextureFormat::R8Unorm);
+        assert!(
+            area_tex
+                .source_path
+                .as_ref()
+                .is_some_and(|path| path.exists())
+        );
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn rejects_unknown_pass_texture_reference() {
         let source = r"
 //!MAGPIE EFFECT
@@ -330,5 +426,27 @@ void Pass1() {}
         );
 
         assert!(matches!(result, Err(UpscaleError::InvalidPipeline(_))));
+    }
+
+    fn fake_dds_dx10(width: u32, height: u32, dxgi_format: u32) -> Vec<u8> {
+        const DDS_MAGIC: &[u8; 4] = b"DDS ";
+        const MIN_DDS_SIZE: usize = 128;
+        const DDPF_FOURCC: u32 = 0x0000_0004;
+        const DX10_FOURCC: u32 = u32::from_le_bytes(*b"DX10");
+
+        let mut bytes = vec![0_u8; MIN_DDS_SIZE + 20];
+        bytes[..4].copy_from_slice(DDS_MAGIC);
+        write_u32(&mut bytes, 4, 124);
+        write_u32(&mut bytes, 12, height);
+        write_u32(&mut bytes, 16, width);
+        write_u32(&mut bytes, 76, 32);
+        write_u32(&mut bytes, 80, DDPF_FOURCC);
+        write_u32(&mut bytes, 84, DX10_FOURCC);
+        write_u32(&mut bytes, MIN_DDS_SIZE, dxgi_format);
+        bytes
+    }
+
+    fn write_u32(bytes: &mut [u8], offset: usize, value: u32) {
+        bytes[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
     }
 }

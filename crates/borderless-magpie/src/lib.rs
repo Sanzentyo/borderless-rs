@@ -2,11 +2,13 @@
 
 #![forbid(unsafe_code)]
 
+pub mod dds;
 pub mod effect;
 pub mod magpiefx;
 pub mod plan;
 pub mod profile;
 
+pub use dds::{DdsMetadata, parse_dds_metadata, read_dds_metadata};
 pub use effect::{EffectGraph, EffectPass, EffectPassStyle, EffectSource, MagpieEffect};
 pub use magpiefx::{
     MagpieFx, MagpieFxParameter, MagpieFxPass, MagpieFxPassStyle, MagpieFxSampler,

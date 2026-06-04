@@ -146,12 +146,13 @@ is the handoff point for both the native DirectX renderer path and the later wgp
 
 - `INPUT` and `OUTPUT` use the capture/output frame sizes;
 - intermediate textures resolve simple Magpie dimension expressions such as `INPUT_WIDTH * 2`;
-- `SOURCE` textures are kept as source assets until the asset loader can read their real DDS size;
+- `SOURCE` textures can be resolved from the effect file directory with `from_effect_file`;
+- DDS source assets are read through a Pure Rust header parser for width, height, and DXGI format;
 - pass inputs and outputs are validated against declared texture names.
 
 The ignored `parse_magpie_assets` integration test can be pointed at a Magpie `src/Effects`
-checkout with `MAGPIE_EFFECTS_DIR`; it parses and render-plans the effect assets as a compatibility
-gate.
+checkout with `MAGPIE_EFFECTS_DIR`; it parses, resolves DDS source metadata, and render-plans the
+effect assets as a compatibility gate.
 
 ## Renderer comparison rule
 

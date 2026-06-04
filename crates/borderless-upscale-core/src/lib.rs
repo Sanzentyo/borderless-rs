@@ -6,6 +6,10 @@ use borderless_core::{PhysicalRect, ScaleFactor};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+pub mod retro;
+
+pub use retro::{RetroCompatibilityPlan, RetroCompatibilityRequest, RetroCompatibilityRequirement};
+
 pub type UpscaleResult<T> = Result<T, UpscaleError>;
 
 #[derive(Clone, Debug, Error, PartialEq, Eq)]

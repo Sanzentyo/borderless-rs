@@ -97,9 +97,15 @@ flowchart LR
     Input --> Runtime["runtime restore and cleanup"]
 ```
 
-The clean-room configuration lives in `borderless-upscale-core` as `LegacyCompatibilityProfile`.
-That keeps profiles, GUI settings, and CLI flags permissively licensed while leaving any wrapper or
-ported compatibility implementation in a dedicated crate. The planned implementation order is:
+The clean-room configuration lives in `borderless-upscale-core` as `LegacyCompatibilityProfile`
+and `RetroCompatibilityPlan`. That keeps profiles, GUI settings, and CLI flags permissively
+licensed while leaving any wrapper or ported compatibility implementation in a dedicated crate.
+`LegacyCompatibilityProfile::recommended_for_api` maps GDI, DirectDraw, D3D8, D3D9, and Glide into
+an initial strategy, and `RetroCompatibilityPlan` turns that into the physical-pixel pipeline plus
+explicit requirements such as API wrapping, proxy presentation, input remapping, palette sync,
+software cursor handling, and runtime restoration.
+
+The planned implementation order is:
 
 1. `BorderlessWindow`: use the existing native path for games that only need style/position fixes.
 2. `ProxyPresentation`: capture the legacy client output and present it through the scaler host.

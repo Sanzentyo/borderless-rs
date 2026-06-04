@@ -263,7 +263,8 @@ mapping remains explicit: unsupported raw DXGI formats are rejected until a wgpu
 `wgpu::BindGroupLayoutEntry` values. Because Magpie's HLSL resources use separate `b`, `t`, `u`, and
 `s` register spaces while wgpu uses one binding namespace per group, the bridge reserves disjoint
 binding bases for each class. The shader translation slice must use the same bases when generating
-WGSL bindings.
+WGSL bindings. A renderer with a `wgpu::Device` can use the same plan to create pass-local
+`wgpu::BindGroupLayout` and `wgpu::PipelineLayout` objects.
 
 `MagpieResourcePlan` is the renderer handoff shape for the next DirectX/wgpu slice. It combines the
 per-pass compile jobs, dispatch groups, CB1/optional CB2 bindings, SRV/UAV texture bindings, and

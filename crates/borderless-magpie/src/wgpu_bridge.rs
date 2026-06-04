@@ -78,6 +78,17 @@ impl MagpieWgpuBindingLayoutPlan {
             .iter()
             .find(|pass| pass.pass_index == pass_index)
     }
+
+    #[must_use]
+    pub fn create_pass_layout_objects(
+        &self,
+        device: &wgpu::Device,
+    ) -> Vec<MagpieWgpuPassLayoutObjects> {
+        self.passes
+            .iter()
+            .map(|pass| pass.create_layout_objects(device))
+            .collect()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -86,6 +97,47 @@ pub struct MagpieWgpuPassLayout {
     pub pass_name: String,
     pub bindings: Vec<MagpieWgpuBinding>,
     pub entries: Vec<wgpu::BindGroupLayoutEntry>,
+}
+
+impl MagpieWgpuPassLayout {
+    #[must_use]
+    pub fn bind_group_layout_descriptor(&self) -> wgpu::BindGroupLayoutDescriptor<'_> {
+        wgpu::BindGroupLayoutDescriptor {
+            label: Some(self.pass_name.as_str()),
+            entries: &self.entries,
+        }
+    }
+
+    #[must_use]
+    pub fn create_bind_group_layout(&self, device: &wgpu::Device) -> wgpu::BindGroupLayout {
+        device.create_bind_group_layout(&self.bind_group_layout_descriptor())
+    }
+
+    #[must_use]
+    pub fn create_layout_objects(&self, device: &wgpu::Device) -> MagpieWgpuPassLayoutObjects {
+        let bind_group_layout = self.create_bind_group_layout(device);
+        let bind_group_layouts = [Some(&bind_group_layout)];
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some(self.pass_name.as_str()),
+            bind_group_layouts: &bind_group_layouts,
+            immediate_size: 0,
+        });
+
+        MagpieWgpuPassLayoutObjects {
+            pass_index: self.pass_index,
+            pass_name: self.pass_name.clone(),
+            bind_group_layout,
+            pipeline_layout,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct MagpieWgpuPassLayoutObjects {
+    pub pass_index: u32,
+    pub pass_name: String,
+    pub bind_group_layout: wgpu::BindGroupLayout,
+    pub pipeline_layout: wgpu::PipelineLayout,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -545,6 +597,11 @@ void Pass2(uint2 pos) { OUTPUT[pos] = tex1[pos]; }
                     wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering)
                 )
         }));
+
+        let descriptor = pass.bind_group_layout_descriptor();
+        assert_eq!(descriptor.label, Some("Copy"));
+        assert_eq!(descriptor.entries.len(), pass.entries.len());
+        assert_eq!(descriptor.entries[0].binding, pass.entries[0].binding);
     }
 
     fn texture_descriptor() -> MagpieBackendTextureDescriptor {

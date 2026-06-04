@@ -72,7 +72,8 @@ Current ported pieces include:
 - `MagpieWgpuDeclarationPlan` behind `wgpu-compare`, which emits WGSL resource declarations from
   the Magpie resource plan using the same binding bases as the wgpu layout and bind group objects.
 - `MagpieWgpuBodyTranslationPlan` behind `wgpu-compare`, which starts the HLSL-to-WGSL body
-  translation path with bounds-guarded simple compute-style texture copy passes.
+  translation path with bounds-guarded simple compute-style texture copy passes and simple PS-style
+  `Sample` / `SampleLevel` passes such as Nearest and Bilinear.
 - `MagpieWgpuExecutionPlan` behind `wgpu-compare`, which converts Magpie dispatch groups into
   ordered wgpu compute pass recording against pass-local pipelines and bind groups.
 

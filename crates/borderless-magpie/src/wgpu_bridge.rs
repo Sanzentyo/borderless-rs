@@ -1212,15 +1212,9 @@ fn translate_simple_compute_pass(
         .passes
         .get(effect_pass_index)
         .ok_or_else(|| invalid_pipeline(format!("missing Magpie pass {}", pass.pass_index)))?;
-    if effect_pass.style != MagpieFxPassStyle::Compute {
-        return Err(invalid_pipeline(format!(
-            "wgpu body translator currently supports only compute-style pass {}",
-            pass.pass_index
-        )));
-    }
     if pass.shader_resources.len() != 1 || pass.unordered_access_views.len() != 1 {
         return Err(invalid_pipeline(format!(
-            "wgpu simple copy translator requires exactly one input and one output for pass {}",
+            "wgpu body translator requires exactly one input and one output for pass {}",
             pass.pass_index
         )));
     }
@@ -1230,14 +1224,28 @@ fn translate_simple_compute_pass(
         .ok_or_else(|| invalid_pipeline(format!("missing pass source {}", pass.pass_index)))?;
     let input = &pass.shader_resources[0].name;
     let output = &pass.unordered_access_views[0].name;
-    validate_simple_copy_source(hlsl_source, input, output)?;
     let declaration_source = declarations.pass(pass.pass_index).ok_or_else(|| {
         invalid_pipeline(format!(
             "missing WGSL declarations for pass {}",
             pass.pass_index
         ))
     })?;
-    let wgsl_source = simple_copy_wgsl_source(declaration_source, pass, input, output)?;
+    let wgsl_source = match effect_pass.style {
+        MagpieFxPassStyle::Compute => {
+            validate_simple_copy_source(hlsl_source, input, output)?;
+            simple_copy_wgsl_source(declaration_source, pass, input, output)?
+        }
+        MagpieFxPassStyle::PixelShader => {
+            let sampler = pass.samplers.first().ok_or_else(|| {
+                invalid_pipeline(format!(
+                    "wgpu PS sample translator requires one sampler for pass {}",
+                    pass.pass_index
+                ))
+            })?;
+            validate_simple_sample_source(hlsl_source, input, &sampler.name)?;
+            simple_sample_wgsl_source(declaration_source, pass, input, output, &sampler.name)?
+        }
+    };
 
     Ok(MagpieWgpuShaderPass::new(
         pass.pass_index,
@@ -1267,6 +1275,28 @@ fn validate_simple_copy_source(source: &str, input: &str, output: &str) -> Upsca
         })
 }
 
+fn validate_simple_sample_source(source: &str, input: &str, sampler: &str) -> UpscaleResult<()> {
+    let normalized = source
+        .chars()
+        .filter(|ch| !ch.is_whitespace())
+        .collect::<String>();
+    let patterns = [
+        format!("return{input}.SampleLevel({sampler},pos,0);"),
+        format!("return{input}.SampleLevel({sampler},pos.xy,0);"),
+        format!("return{input}.Sample({sampler},pos);"),
+        format!("return{input}.Sample({sampler},pos.xy);"),
+    ];
+    patterns
+        .iter()
+        .any(|pattern| normalized.contains(pattern))
+        .then_some(())
+        .ok_or_else(|| {
+            invalid_pipeline(format!(
+                "wgpu PS sample translator could not match {input}.SampleLevel({sampler}, pos, 0)"
+            ))
+        })
+}
+
 fn simple_copy_wgsl_source(
     declarations: &MagpieWgpuDeclarationPass,
     pass: &MagpieResourcePass,
@@ -1284,6 +1314,29 @@ fn simple_copy_wgsl_source(
     }
     Ok(format!(
         "{declarations}\n\n@compute @workgroup_size({workgroup_x}, {workgroup_y}, 1)\nfn main(@builtin(global_invocation_id) gid: vec3<u32>) {{\n    let pos = vec2<u32>(gid.xy);\n    let input_size = textureDimensions({input});\n    let output_size = textureDimensions({output});\n    if (pos.x >= input_size.x || pos.y >= input_size.y || pos.x >= output_size.x || pos.y >= output_size.y) {{\n        return;\n    }}\n    let value = textureLoad({input}, vec2<i32>(pos), 0);\n    textureStore({output}, vec2<i32>(pos), value);\n}}\n",
+        declarations = declarations.source
+    ))
+}
+
+fn simple_sample_wgsl_source(
+    declarations: &MagpieWgpuDeclarationPass,
+    pass: &MagpieResourcePass,
+    input: &str,
+    output: &str,
+    sampler: &str,
+) -> UpscaleResult<String> {
+    validate_wgsl_identifier(input)?;
+    validate_wgsl_identifier(output)?;
+    validate_wgsl_identifier(sampler)?;
+    let [workgroup_x, workgroup_y] = pass.dispatch.block_size;
+    if workgroup_x == 0 || workgroup_y == 0 {
+        return Err(invalid_pipeline(format!(
+            "invalid WGSL workgroup size for pass {}",
+            pass.pass_index
+        )));
+    }
+    Ok(format!(
+        "{declarations}\n\n@compute @workgroup_size({workgroup_x}, {workgroup_y}, 1)\nfn main(@builtin(global_invocation_id) gid: vec3<u32>) {{\n    let pos = vec2<u32>(gid.xy);\n    let output_size = textureDimensions({output});\n    if (pos.x >= output_size.x || pos.y >= output_size.y) {{\n        return;\n    }}\n    let uv = (vec2<f32>(f32(pos.x), f32(pos.y)) + vec2<f32>(0.5, 0.5)) / vec2<f32>(f32(output_size.x), f32(output_size.y));\n    let value = textureSampleLevel({input}, {sampler}, uv, 0.0);\n    textureStore({output}, vec2<i32>(pos), value);\n}}\n",
         declarations = declarations.source
     ))
 }
@@ -1875,6 +1928,48 @@ void Pass1(uint2 pos) { OUTPUT[pos] = INPUT[pos]; }
     }
 
     #[test]
+    fn translates_simple_ps_sample_pass_to_wgsl() {
+        let package = package(
+            r"
+//!MAGPIE EFFECT
+//!VERSION 4
+//!TEXTURE
+Texture2D INPUT;
+//!TEXTURE
+Texture2D OUTPUT;
+//!SAMPLER
+//!FILTER LINEAR
+SamplerState sam;
+//!PASS 1
+//!STYLE PS
+//!IN INPUT
+//!OUT OUTPUT
+float4 Pass1(float2 pos) {
+    return INPUT.SampleLevel(sam, pos, 0);
+}
+",
+        );
+        let resources = MagpieResourcePlan::from_package(&package).unwrap();
+
+        let plan =
+            MagpieWgpuBodyTranslationPlan::from_package_and_resource_plan(&package, &resources)
+                .unwrap();
+        let pass = plan.pass(1).unwrap();
+
+        assert!(
+            pass.wgsl_source
+                .contains("@compute @workgroup_size(16, 16, 1)")
+        );
+        assert!(pass.wgsl_source.contains("textureSampleLevel(INPUT, sam"));
+        assert!(pass.wgsl_source.contains("textureStore(OUTPUT"));
+        assert!(pass.wgsl_source.contains("textureDimensions(OUTPUT)"));
+        assert!(
+            pass.wgsl_source
+                .contains("@group(0) @binding(96) var sam: sampler;")
+        );
+    }
+
+    #[test]
     fn rejects_compute_body_that_is_not_simple_copy() {
         let package = package(
             r"
@@ -1890,6 +1985,33 @@ Texture2D OUTPUT;
 //!BLOCK_SIZE 8
 //!NUM_THREADS 64
 void Pass1(uint2 pos) { OUTPUT[pos] = MF4(1, 0, 0, 1); }
+",
+        );
+        let resources = MagpieResourcePlan::from_package(&package).unwrap();
+
+        assert!(matches!(
+            MagpieWgpuBodyTranslationPlan::from_package_and_resource_plan(&package, &resources),
+            Err(UpscaleError::InvalidPipeline(_))
+        ));
+    }
+
+    #[test]
+    fn rejects_ps_body_that_is_not_simple_sample() {
+        let package = package(
+            r"
+//!MAGPIE EFFECT
+//!VERSION 4
+//!TEXTURE
+Texture2D INPUT;
+//!TEXTURE
+Texture2D OUTPUT;
+//!SAMPLER
+SamplerState sam;
+//!PASS 1
+//!STYLE PS
+//!IN INPUT
+//!OUT OUTPUT
+float4 Pass1(float2 pos) { return float4(1, 0, 0, 1); }
 ",
         );
         let resources = MagpieResourcePlan::from_package(&package).unwrap();

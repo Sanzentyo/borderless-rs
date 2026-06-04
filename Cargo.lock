@@ -201,6 +201,7 @@ dependencies = [
  "borderless-upscale-wgpu",
  "serde",
  "thiserror",
+ "wgpu",
 ]
 
 [[package]]

@@ -19,6 +19,8 @@ pub mod plan;
 pub mod profile;
 pub mod resources;
 pub mod upload;
+#[cfg(feature = "wgpu-compare")]
+pub mod wgpu_bridge;
 
 pub use allocation::{MagpieTextureAllocation, MagpieTextureAllocationPlan, MagpieTextureUsage};
 pub use backend::{
@@ -59,3 +61,5 @@ pub use resources::{
     MagpieTextureResourceBinding,
 };
 pub use upload::{MagpieSourceUpload, MagpieSourceUploadPlan};
+#[cfg(feature = "wgpu-compare")]
+pub use wgpu_bridge::MagpieWgpuDescriptorPlan;

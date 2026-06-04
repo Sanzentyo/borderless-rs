@@ -13,7 +13,7 @@ repository.workspace = true
 default = []
 magpie-port = []
 shader-assets = []
-wgpu-compare = ["dep:borderless-upscale-wgpu", "borderless-upscale-wgpu/dx12"]
+wgpu-compare = ["dep:borderless-upscale-wgpu", "dep:wgpu", "borderless-upscale-wgpu/dx12"]
 
 [dependencies]
 borderless-core.workspace = true
@@ -21,6 +21,7 @@ borderless-upscale-core.workspace = true
 borderless-upscale-wgpu = { workspace = true, optional = true }
 serde.workspace = true
 thiserror.workspace = true
+wgpu = { workspace = true, optional = true }
 
 [lints]
 workspace = true

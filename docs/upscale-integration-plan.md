@@ -81,6 +81,12 @@ The default build can use these types without linking GPL scaler crates. Enablin
 pulls in `borderless-magpie`; enabling `magpie-wgpu-compare` additionally pulls in the DirectX/wgpu
 comparison crate.
 
+License boundaries are intentional. Any Rust module, shader, generated resource model, or renderer
+behavior that directly ports Magpie code or closely follows Magpie's implementation details must
+stay under GPL-3.0-or-later and carry Magpie source attribution with SPDX file headers. Pure
+configuration models and clean-room interfaces can remain MIT OR Apache-2.0 only when they do not
+depend on, embed, or reimplement Magpie-derived behavior.
+
 ## Retro compatibility layer
 
 The retro-game path is intentionally separate from the Magpie upscale path. Magpie-compatible code
@@ -249,6 +255,10 @@ renderer path explicitly implements them.
 `MagpieBackendDescriptorPlan` lowers the API-neutral resource plan into texture, constant-buffer,
 and sampler descriptors with DXGI format numbers and bind flags. This is the last common handoff
 before native DirectX or wgpu-specific object creation.
+
+Behind `wgpu-compare`, `MagpieWgpuDescriptorPlan` converts those backend descriptors into
+`wgpu::TextureDescriptor`, `wgpu::BufferDescriptor`, and `wgpu::SamplerDescriptor` values. The
+mapping remains explicit: unsupported raw DXGI formats are rejected until a wgpu equivalent is added.
 
 `MagpieResourcePlan` is the renderer handoff shape for the next DirectX/wgpu slice. It combines the
 per-pass compile jobs, dispatch groups, CB1/optional CB2 bindings, SRV/UAV texture bindings, and

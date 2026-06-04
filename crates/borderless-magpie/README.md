@@ -45,6 +45,8 @@ Current ported pieces include:
   pitch, byte size, and format metadata.
 - `MagpieBackendDescriptorPlan`, which lowers resource plans into texture, buffer, and sampler
   descriptors ready for native DirectX or wgpu-specific translation.
+- `MagpieWgpuDescriptorPlan` behind `wgpu-compare`, which converts backend descriptors into wgpu
+  texture, buffer, and sampler descriptors for the comparison renderer path.
 
 Bundled shader/effect assets are intentionally feature-gated and must carry per-file SPDX headers
 from their original source. Some Magpie effect files have their own notices, so they should not be

@@ -136,6 +136,7 @@ flowchart LR
     Jobs --> Compiler["MagpieExternalHlslCompiler\nfxc/dxc bytecode handoff"]
     Resources --> Dispatch["MagpieDispatchPlan\nDispatch(x,y,1) groups"]
     Resources --> Constants["MagpieConstantBufferPlan\nCB1 dword payload"]
+    Resources --> Handoff["MagpieResourcePlan\nCBV / SRV / UAV / sampler handoff"]
 ```
 
 The parser currently recognizes these directive groups:
@@ -215,6 +216,11 @@ Magpie's 16x16 block.
 input/output sizes, texel sizes, scale, non-final PS-style pass output size/texel constants, and
 non-inline parameter values into padded 32-bit dwords. `MagpieDynamicConstantBuffer` represents the
 optional `_DYNAMIC` frame-count CB2 payload.
+
+`MagpieResourcePlan` is the renderer handoff shape for the next DirectX/wgpu slice. It combines the
+per-pass compile jobs, dispatch groups, CB1/optional CB2 bindings, SRV/UAV texture bindings, and
+sampler bindings without depending on a concrete D3D or wgpu API. That gives both renderer paths the
+same Magpie-compatible resource order to execute.
 
 The remaining DirectX work is to add any remaining optional helper paths and wire the compiled
 bytecode into the actual D3D renderer/backend.

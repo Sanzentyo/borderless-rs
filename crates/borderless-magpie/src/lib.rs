@@ -12,6 +12,7 @@ pub mod magpiefx;
 pub mod package;
 pub mod plan;
 pub mod profile;
+pub mod resources;
 
 pub use compiler::{
     MAGPIE_ENTRY_POINT, MAGPIE_TARGET_PROFILE, MagpieCompilePlan, MagpieShaderJob,
@@ -38,3 +39,8 @@ pub use plan::{
     MagpiePassPlan, MagpieRenderPlan, MagpieTextureFormat, MagpieTexturePlan, MagpieTextureRole,
 };
 pub use profile::{chaos_child_profile, tsukihime_profile};
+pub use resources::{
+    MAGPIE_CB1_REGISTER, MAGPIE_CB2_REGISTER, MagpieConstantBufferBinding, MagpieResourcePass,
+    MagpieResourcePlan, MagpieResourcePlanOptions, MagpieSamplerResourceBinding,
+    MagpieTextureResourceBinding,
+};

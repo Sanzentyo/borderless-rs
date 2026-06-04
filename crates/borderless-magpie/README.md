@@ -31,6 +31,8 @@ Current ported pieces include:
   block_height), 1)` scheduling from the first output texture of each pass.
 - `MagpieConstantBufferPlan`, which mirrors Magpie's CB1 dword layout for builtin constants,
   non-final PS-style pass size constants, and non-inline effect parameters.
+- `MagpieResourcePlan`, which combines compile jobs, dispatch groups, CB1/CB2 bindings, SRV/UAV
+  texture bindings, and sampler bindings into the renderer handoff shape.
 
 Bundled shader/effect assets are intentionally feature-gated and must carry per-file SPDX headers
 from their original source. Some Magpie effect files have their own notices, so they should not be

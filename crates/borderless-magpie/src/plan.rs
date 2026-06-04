@@ -6,7 +6,7 @@ use crate::dds::read_dds_metadata;
 use crate::magpiefx::{MagpieFx, MagpieFxPassStyle, MagpieFxTexture, parse_magpiefx_file};
 use borderless_upscale_core::{FrameSize, UpscaleError, UpscaleResult};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -47,12 +47,19 @@ impl MagpieRenderPlan {
             .iter()
             .map(|texture| texture.name.as_str())
             .collect::<HashSet<_>>();
+        let texture_roles = textures
+            .iter()
+            .map(|texture| (texture.name.as_str(), texture.role))
+            .collect::<HashMap<_, _>>();
+        let pass_count = effect.passes.len();
         let passes = effect
             .passes
             .iter()
-            .map(|pass| {
+            .enumerate()
+            .map(|(pass_index, pass)| {
                 let inputs = validate_texture_refs(&pass.inputs, &texture_names)?;
                 let outputs = validate_texture_refs(&pass.outputs, &texture_names)?;
+                validate_pass_io(pass_index, pass_count, &inputs, &outputs, &texture_roles)?;
                 Ok(MagpiePassPlan {
                     name: format!("Pass{}", pass.index),
                     description: pass.description.clone(),
@@ -249,6 +256,102 @@ fn validate_texture_refs(
         .collect()
 }
 
+fn validate_pass_io(
+    pass_index: usize,
+    pass_count: usize,
+    inputs: &[String],
+    outputs: &[String],
+    texture_roles: &HashMap<&str, MagpieTextureRole>,
+) -> UpscaleResult<()> {
+    if inputs.is_empty() {
+        return Err(invalid_pipeline("Magpie pass requires at least one input"));
+    }
+    if outputs.is_empty() {
+        return Err(invalid_pipeline("Magpie pass requires at least one output"));
+    }
+    validate_unique_refs(inputs, "input")?;
+    validate_unique_refs(outputs, "output")?;
+    validate_disjoint_refs(inputs, outputs)?;
+    for input in inputs {
+        if matches!(
+            texture_roles.get(input.as_str()),
+            Some(MagpieTextureRole::Output)
+        ) {
+            return Err(invalid_pipeline("Magpie pass cannot read OUTPUT texture"));
+        }
+    }
+    if pass_index + 1 == pass_count {
+        return validate_final_pass_outputs(outputs);
+    }
+    validate_intermediate_pass_outputs(outputs, texture_roles)
+}
+
+fn validate_unique_refs(names: &[String], kind: &str) -> UpscaleResult<()> {
+    let mut seen = HashSet::new();
+    for name in names {
+        if !seen.insert(name.as_str()) {
+            return Err(invalid_pipeline(format!(
+                "Magpie pass has duplicate {kind} texture {name}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn validate_disjoint_refs(inputs: &[String], outputs: &[String]) -> UpscaleResult<()> {
+    let inputs = inputs.iter().map(String::as_str).collect::<HashSet<_>>();
+    for output in outputs {
+        if inputs.contains(output.as_str()) {
+            return Err(invalid_pipeline(format!(
+                "Magpie pass cannot read and write texture {output}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn validate_final_pass_outputs(outputs: &[String]) -> UpscaleResult<()> {
+    if outputs == ["OUTPUT"] {
+        Ok(())
+    } else {
+        Err(invalid_pipeline(
+            "final Magpie pass must output exactly OUTPUT",
+        ))
+    }
+}
+
+fn validate_intermediate_pass_outputs(
+    outputs: &[String],
+    texture_roles: &HashMap<&str, MagpieTextureRole>,
+) -> UpscaleResult<()> {
+    if outputs.len() > 8 {
+        return Err(invalid_pipeline(
+            "Magpie pass cannot output more than 8 textures",
+        ));
+    }
+    for output in outputs {
+        match texture_roles.get(output.as_str()) {
+            Some(MagpieTextureRole::Intermediate) => {}
+            Some(MagpieTextureRole::Input | MagpieTextureRole::Output) => {
+                return Err(invalid_pipeline(format!(
+                    "intermediate Magpie pass cannot output {output}"
+                )));
+            }
+            Some(MagpieTextureRole::SourceAsset) => {
+                return Err(invalid_pipeline(format!(
+                    "Magpie pass cannot output source asset texture {output}"
+                )));
+            }
+            None => {
+                return Err(invalid_pipeline(format!(
+                    "pass references unknown texture {output}"
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
 fn eval_dimension(expr: &str, context: DimensionContext<'_>) -> UpscaleResult<u32> {
     expr.split('*').map(str::trim).try_fold(1_u32, |acc, part| {
         let value = eval_dimension_factor(part, context)?;
@@ -417,6 +520,91 @@ Texture2D OUTPUT;
 //!IN missing
 //!OUT OUTPUT
 void Pass1() {}
+";
+        let effect = parse_magpiefx(source).unwrap();
+        let result = MagpieRenderPlan::from_effect(
+            &effect,
+            FrameSize::new(640, 480).unwrap(),
+            FrameSize::new(1280, 960).unwrap(),
+        );
+
+        assert!(matches!(result, Err(UpscaleError::InvalidPipeline(_))));
+    }
+
+    #[test]
+    fn rejects_output_as_input_texture() {
+        let source = r"
+//!MAGPIE EFFECT
+//!VERSION 4
+//!TEXTURE
+Texture2D INPUT;
+//!TEXTURE
+Texture2D OUTPUT;
+//!PASS 1
+//!IN OUTPUT
+//!OUT OUTPUT
+void Pass1() {}
+";
+        let effect = parse_magpiefx(source).unwrap();
+        let result = MagpieRenderPlan::from_effect(
+            &effect,
+            FrameSize::new(640, 480).unwrap(),
+            FrameSize::new(1280, 960).unwrap(),
+        );
+
+        assert!(matches!(result, Err(UpscaleError::InvalidPipeline(_))));
+    }
+
+    #[test]
+    fn rejects_intermediate_pass_outputting_source_asset() {
+        let source = r"
+//!MAGPIE EFFECT
+//!VERSION 4
+//!TEXTURE
+Texture2D INPUT;
+//!TEXTURE
+Texture2D OUTPUT;
+//!TEXTURE
+//!SOURCE Lut.dds
+Texture2D lut;
+//!PASS 1
+//!IN INPUT
+//!OUT lut
+//!PASS 2
+//!IN INPUT
+//!OUT OUTPUT
+void Pass1() {}
+void Pass2() {}
+";
+        let effect = parse_magpiefx(source).unwrap();
+        let result = MagpieRenderPlan::from_effect(
+            &effect,
+            FrameSize::new(640, 480).unwrap(),
+            FrameSize::new(1280, 960).unwrap(),
+        );
+
+        assert!(matches!(result, Err(UpscaleError::InvalidPipeline(_))));
+    }
+
+    #[test]
+    fn rejects_non_final_pass_outputting_output_texture() {
+        let source = r"
+//!MAGPIE EFFECT
+//!VERSION 4
+//!TEXTURE
+Texture2D INPUT;
+//!TEXTURE
+Texture2D OUTPUT;
+//!TEXTURE
+Texture2D tmp;
+//!PASS 1
+//!IN INPUT
+//!OUT OUTPUT
+//!PASS 2
+//!IN tmp
+//!OUT OUTPUT
+void Pass1() {}
+void Pass2() {}
 ";
         let effect = parse_magpiefx(source).unwrap();
         let result = MagpieRenderPlan::from_effect(

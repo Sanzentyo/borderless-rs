@@ -151,7 +151,12 @@ is the handoff point for both the native DirectX renderer path and the later wgp
 - intermediate textures resolve simple Magpie dimension expressions such as `INPUT_WIDTH * 2`;
 - `SOURCE` textures can be resolved from the effect file directory with `from_effect_file`;
 - DDS source assets are read through a Pure Rust header parser for width, height, and DXGI format;
-- pass inputs and outputs are validated against declared texture names.
+- pass inputs and outputs are validated against declared texture names and Magpie pass IO rules.
+
+The pass IO validation follows Magpie constraints: `OUTPUT` cannot be read, intermediate passes
+cannot write `INPUT`, `OUTPUT`, or `SOURCE` textures, each pass output list is capped at 8 textures,
+the same pass cannot read and write the same texture, and the final pass must output exactly
+`OUTPUT`.
 
 The ignored `parse_magpie_assets` integration test can be pointed at a Magpie `src/Effects`
 checkout with `MAGPIE_EFFECTS_DIR`; it parses, expands HLSL includes, resolves DDS source metadata,

@@ -7,6 +7,7 @@ use crate::package::MagpieEffectPackage;
 use crate::plan::MagpiePassPlan;
 use borderless_upscale_core::{UpscaleError, UpscaleResult};
 use serde::{Deserialize, Serialize};
+use std::fmt::Write as _;
 
 pub const MAGPIE_ENTRY_POINT: &str = "__M";
 pub const MAGPIE_TARGET_PROFILE: &str = "cs_5_0";
@@ -57,6 +58,7 @@ pub struct MagpieShaderJob {
     pub inputs: Vec<String>,
     pub outputs: Vec<String>,
     pub base_source: String,
+    pub generated_source: String,
     pub macros: Vec<MagpieShaderMacro>,
 }
 
@@ -107,6 +109,8 @@ fn shader_job(
         &mut macros,
         capabilities.iter().any(|value| value == "FP16"),
     );
+    let generated_source =
+        generate_pass_source(pass_index, pass, base_source, block_size, num_threads)?;
 
     Ok(MagpieShaderJob {
         pass_index,
@@ -123,8 +127,111 @@ fn shader_job(
         inputs: pass.inputs.clone(),
         outputs: pass.outputs.clone(),
         base_source: base_source.to_owned(),
+        generated_source,
         macros,
     })
+}
+
+fn generate_pass_source(
+    pass_index: u32,
+    pass: &MagpiePassPlan,
+    base_source: &str,
+    block_size: [u32; 2],
+    num_threads: [u32; 3],
+) -> UpscaleResult<String> {
+    validate_pass_function(base_source, pass_index)?;
+    let wrapper = match pass.style {
+        MagpieFxPassStyle::PixelShader => generate_pixel_style_entry(pass_index, pass)?,
+        MagpieFxPassStyle::Compute => {
+            generate_compute_style_entry(pass_index, block_size, num_threads)
+        }
+    };
+    Ok(format!("{base_source}\n\n{wrapper}"))
+}
+
+fn validate_pass_function(source: &str, pass_index: u32) -> UpscaleResult<()> {
+    let function = format!("Pass{pass_index}");
+    source
+        .contains(&function)
+        .then_some(())
+        .ok_or_else(|| invalid_pipeline(format!("Magpie shader source is missing {function}")))
+}
+
+fn generate_compute_style_entry(
+    pass_index: u32,
+    block_size: [u32; 2],
+    num_threads: [u32; 3],
+) -> String {
+    let block_start = block_start_expr(block_size);
+    format!(
+        r"[numthreads({threads_x}, {threads_y}, {threads_z})]
+void __M(uint3 tid : SV_GroupThreadID, uint3 gid : SV_GroupID) {{
+    Pass{pass_index}({block_start}, tid);
+}}
+",
+        threads_x = num_threads[0],
+        threads_y = num_threads[1],
+        threads_z = num_threads[2],
+    )
+}
+
+fn generate_pixel_style_entry(pass_index: u32, pass: &MagpiePassPlan) -> UpscaleResult<String> {
+    let output = pass
+        .outputs
+        .first()
+        .ok_or_else(|| invalid_pipeline("PS-style Magpie pass requires an output texture"))?;
+    if pass.outputs.len() > 1 {
+        return Ok(generate_multi_output_pixel_style_entry(pass_index, pass));
+    }
+    Ok(format!(
+        r"[numthreads(64, 1, 1)]
+void __M(uint3 tid : SV_GroupThreadID, uint3 gid : SV_GroupID) {{
+    uint2 gxy = (gid.xy << 4u) + Rmp8x8(tid.x);
+    float2 pos = float2(gxy) + 0.5f;
+    {output}[gxy] = Pass{pass_index}(pos);
+}}
+"
+    ))
+}
+
+fn generate_multi_output_pixel_style_entry(pass_index: u32, pass: &MagpiePassPlan) -> String {
+    let mut declarations = String::new();
+    for index in 0..pass.outputs.len() {
+        writeln!(&mut declarations, "    float4 c{index};").expect("writing to String cannot fail");
+    }
+    let arguments = (0..pass.outputs.len())
+        .map(|index| format!("c{index}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mut stores = String::new();
+    for (index, output) in pass.outputs.iter().enumerate() {
+        writeln!(&mut stores, "    {output}[gxy] = c{index};")
+            .expect("writing to String cannot fail");
+    }
+    format!(
+        r"[numthreads(64, 1, 1)]
+void __M(uint3 tid : SV_GroupThreadID, uint3 gid : SV_GroupID) {{
+    uint2 gxy = (gid.xy << 4u) + Rmp8x8(tid.x);
+    float2 pos = float2(gxy) + 0.5f;
+{declarations}    Pass{pass_index}(pos, {arguments});
+{stores}}}
+"
+    )
+}
+
+fn block_start_expr(block_size: [u32; 2]) -> String {
+    if block_size[0] == block_size[1]
+        && block_size[0].is_power_of_two()
+        && let Some(shift) = checked_log2(block_size[0])
+    {
+        format!("(gid.xy << {shift}u)")
+    } else {
+        format!("gid.xy * uint2({}, {})", block_size[0], block_size[1])
+    }
+}
+
+fn checked_log2(value: u32) -> Option<u32> {
+    value.is_power_of_two().then_some(value.trailing_zeros())
 }
 
 fn normalized_block_size(pass: &MagpiePassPlan) -> UpscaleResult<[u32; 2]> {
@@ -238,6 +345,8 @@ float4 Pass1(float2 pos) { return 1; }
                 .iter()
                 .any(|shader_macro| shader_macro.name == "MP_PS_STYLE")
         );
+        assert!(plan.jobs[0].generated_source.contains("void __M"));
+        assert!(plan.jobs[0].generated_source.contains("Pass1(pos)"));
     }
 
     #[test]
@@ -270,6 +379,11 @@ void Pass1(uint2 blockStart, uint3 threadId) {}
         assert!(job.macros.iter().any(|shader_macro| {
             shader_macro.name == "MF" && shader_macro.value.as_deref() == Some("min16float")
         }));
+        assert!(job.generated_source.contains("[numthreads(64, 1, 1)]"));
+        assert!(
+            job.generated_source
+                .contains("Pass1(gid.xy * uint2(16, 8), tid)")
+        );
     }
 
     fn package_from_source(source: &str) -> MagpieEffectPackage {

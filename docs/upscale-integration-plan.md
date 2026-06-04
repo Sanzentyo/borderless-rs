@@ -166,6 +166,10 @@ compile convention: every pass compiles through the `__M` entry point with `cs_5
 PS-style passes, and carries Magpie macros such as `MP_BLOCK_WIDTH`, `MP_NUM_THREADS_X`, `MP_PS_STYLE`,
 `MP_FP16`, and the `MF*` float/min16float aliases.
 
+Each shader job now also carries generated HLSL source containing the include-expanded effect source
+and a per-pass `__M` wrapper skeleton. The remaining DirectX work is to complete Magpie-equivalent
+resource declarations, constant buffers, PS-style bounds handling, and the actual D3D compile call.
+
 ## Renderer comparison rule
 
 The Magpie-compatible native DirectX path is the reference. The wgpu path is eligible to replace it

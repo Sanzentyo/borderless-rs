@@ -138,6 +138,7 @@ flowchart LR
     Bundle --> Exec["MagpieExecutionPlan\nordered pass commands"]
     Resources --> Dispatch["MagpieDispatchPlan\nDispatch(x,y,1) groups"]
     Resources --> Constants["MagpieConstantBufferPlan\nCB1 dword payload"]
+    Resources --> Alloc["MagpieTextureAllocationPlan\ntexture usage + lifetimes"]
     Resources --> Handoff["MagpieResourcePlan\nCBV / SRV / UAV / sampler handoff"]
     Handoff --> Bundle
 ```
@@ -228,6 +229,11 @@ Magpie's 16x16 block.
 input/output sizes, texel sizes, scale, non-final PS-style pass output size/texel constants, and
 non-inline parameter values into padded 32-bit dwords. `MagpieDynamicConstantBuffer` represents the
 optional `_DYNAMIC` frame-count CB2 payload.
+
+`MagpieTextureAllocationPlan` validates that renderer-owned textures have concrete sizes and records
+their usage flags plus read/write pass lifetimes. `MagpieResourcePlan` now carries these allocations
+alongside CBV/SRV/UAV/sampler bindings so a renderer can create the texture pool before interpreting
+the execution commands.
 
 `MagpieResourcePlan` is the renderer handoff shape for the next DirectX/wgpu slice. It combines the
 per-pass compile jobs, dispatch groups, CB1/optional CB2 bindings, SRV/UAV texture bindings, and

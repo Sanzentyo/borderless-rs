@@ -37,6 +37,8 @@ Current ported pieces include:
   non-final PS-style pass size constants, and non-inline effect parameters.
 - `MagpieResourcePlan`, which combines compile jobs, dispatch groups, CB1/CB2 bindings, SRV/UAV
   texture bindings, and sampler bindings into the renderer handoff shape.
+- `MagpieTextureAllocationPlan`, which resolves renderer texture allocations, usage flags, and
+  read/write pass lifetimes.
 
 Bundled shader/effect assets are intentionally feature-gated and must carry per-file SPDX headers
 from their original source. Some Magpie effect files have their own notices, so they should not be

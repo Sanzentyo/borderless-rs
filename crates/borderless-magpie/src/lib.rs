@@ -2,6 +2,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod allocation;
 pub mod compiled;
 pub mod compiler;
 pub mod constants;
@@ -16,6 +17,7 @@ pub mod plan;
 pub mod profile;
 pub mod resources;
 
+pub use allocation::{MagpieTextureAllocation, MagpieTextureAllocationPlan, MagpieTextureUsage};
 pub use compiled::{MagpieCompiledEffect, MagpieCompiledEffectOptions};
 pub use compiler::{
     MAGPIE_ENTRY_POINT, MAGPIE_TARGET_PROFILE, MagpieCompilePlan, MagpieShaderJob,

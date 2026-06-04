@@ -4,6 +4,7 @@
 // Magpie-compatible renderer resource planning for the GPL port:
 // https://github.com/Blinue/Magpie
 
+use crate::allocation::{MagpieTextureAllocation, MagpieTextureAllocationPlan};
 use crate::compiler::{
     MagpieCompileOptions, MagpieCompilePlan, MagpieShaderJob, MagpieTextureAccess,
     MagpieTextureBinding,
@@ -24,6 +25,7 @@ pub const MAGPIE_CB2_REGISTER: u32 = 1;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MagpieResourcePlan {
     pub source_name: String,
+    pub textures: Vec<MagpieTextureAllocation>,
     pub constant_buffer: MagpieConstantBufferBinding,
     pub dynamic_constant_buffer: Option<MagpieConstantBufferBinding>,
     pub passes: Vec<MagpieResourcePass>,
@@ -40,6 +42,8 @@ impl MagpieResourcePlan {
     ) -> UpscaleResult<Self> {
         validate_options(options)?;
         let compile_plan = MagpieCompilePlan::from_package_with_options(package, &options.compile)?;
+        let texture_allocations =
+            MagpieTextureAllocationPlan::from_render_plan(&package.render_plan)?;
         let constants = MagpieConstantBufferPlan::from_package(package, &options.constant_buffer)?;
         let dispatch = MagpieDispatchPlan::from_render_plan(&package.render_plan)?;
         let dynamic_constant_buffer = uses_dynamic(&package.effect.uses)
@@ -53,6 +57,7 @@ impl MagpieResourcePlan {
 
         Ok(Self {
             source_name: compile_plan.source_name,
+            textures: texture_allocations.textures,
             constant_buffer: MagpieConstantBufferBinding::cb1(constants),
             dynamic_constant_buffer,
             passes,

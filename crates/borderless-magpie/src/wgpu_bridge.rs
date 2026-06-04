@@ -9,7 +9,8 @@ use crate::backend::{
     MagpieBackendTextureBind, MagpieBackendTextureDescriptor,
 };
 use crate::formats::MagpieTextureComponent;
-use crate::magpiefx::{MagpieFxSamplerAddress, MagpieFxSamplerFilter};
+use crate::magpiefx::{MagpieFxPassStyle, MagpieFxSamplerAddress, MagpieFxSamplerFilter};
+use crate::package::MagpieEffectPackage;
 use crate::plan::MagpieTextureFormat;
 use crate::resources::{
     MagpieConstantBufferBinding, MagpieResourcePass, MagpieResourcePlan,
@@ -339,6 +340,41 @@ pub struct MagpieWgpuDeclaration {
     pub binding: u32,
     pub kind: MagpieWgpuBindingKind,
     pub source: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MagpieWgpuBodyTranslationPlan {
+    pub passes: Vec<MagpieWgpuShaderPass>,
+}
+
+impl MagpieWgpuBodyTranslationPlan {
+    pub fn from_package_and_resource_plan(
+        package: &MagpieEffectPackage,
+        resources: &MagpieResourcePlan,
+    ) -> UpscaleResult<Self> {
+        let declarations = MagpieWgpuDeclarationPlan::from_resource_plan(resources)?;
+        let passes = resources
+            .passes
+            .iter()
+            .map(|pass| translate_simple_compute_pass(package, pass, &declarations))
+            .collect::<UpscaleResult<Vec<_>>>()?;
+
+        Ok(Self { passes })
+    }
+
+    #[must_use]
+    pub fn shader_plan(self) -> MagpieWgpuShaderPlan {
+        MagpieWgpuShaderPlan {
+            passes: self.passes,
+        }
+    }
+
+    #[must_use]
+    pub fn pass(&self, pass_index: u32) -> Option<&MagpieWgpuShaderPass> {
+        self.passes
+            .iter()
+            .find(|pass| pass.pass_index == pass_index)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -751,6 +787,94 @@ fn validate_wgsl_identifier(identifier: &str) -> UpscaleResult<()> {
     (valid_first && valid_rest)
         .then_some(())
         .ok_or_else(|| invalid_pipeline(format!("invalid WGSL identifier {identifier}")))
+}
+
+fn translate_simple_compute_pass(
+    package: &MagpieEffectPackage,
+    pass: &MagpieResourcePass,
+    declarations: &MagpieWgpuDeclarationPlan,
+) -> UpscaleResult<MagpieWgpuShaderPass> {
+    let effect_pass_index = usize::try_from(pass.pass_index.saturating_sub(1))
+        .map_err(|_| invalid_pipeline("invalid Magpie pass index"))?;
+    let effect_pass = package
+        .effect
+        .passes
+        .get(effect_pass_index)
+        .ok_or_else(|| invalid_pipeline(format!("missing Magpie pass {}", pass.pass_index)))?;
+    if effect_pass.style != MagpieFxPassStyle::Compute {
+        return Err(invalid_pipeline(format!(
+            "wgpu body translator currently supports only compute-style pass {}",
+            pass.pass_index
+        )));
+    }
+    if pass.shader_resources.len() != 1 || pass.unordered_access_views.len() != 1 {
+        return Err(invalid_pipeline(format!(
+            "wgpu simple copy translator requires exactly one input and one output for pass {}",
+            pass.pass_index
+        )));
+    }
+    let hlsl_source = package
+        .compiler_pass_sources
+        .get(effect_pass_index)
+        .ok_or_else(|| invalid_pipeline(format!("missing pass source {}", pass.pass_index)))?;
+    let input = &pass.shader_resources[0].name;
+    let output = &pass.unordered_access_views[0].name;
+    validate_simple_copy_source(hlsl_source, input, output)?;
+    let declaration_source = declarations.pass(pass.pass_index).ok_or_else(|| {
+        invalid_pipeline(format!(
+            "missing WGSL declarations for pass {}",
+            pass.pass_index
+        ))
+    })?;
+    let wgsl_source = simple_copy_wgsl_source(declaration_source, pass, input, output)?;
+
+    Ok(MagpieWgpuShaderPass::new(
+        pass.pass_index,
+        pass.pass_name.clone(),
+        "main",
+        wgsl_source,
+    ))
+}
+
+fn validate_simple_copy_source(source: &str, input: &str, output: &str) -> UpscaleResult<()> {
+    let normalized = source
+        .chars()
+        .filter(|ch| !ch.is_whitespace())
+        .collect::<String>();
+    let patterns = [
+        format!("{output}[pos]={input}[pos];"),
+        format!("{output}[pos.xy]={input}[pos.xy];"),
+    ];
+    patterns
+        .iter()
+        .any(|pattern| normalized.contains(pattern))
+        .then_some(())
+        .ok_or_else(|| {
+            invalid_pipeline(format!(
+                "wgpu simple copy translator could not match {output}[pos] = {input}[pos]"
+            ))
+        })
+}
+
+fn simple_copy_wgsl_source(
+    declarations: &MagpieWgpuDeclarationPass,
+    pass: &MagpieResourcePass,
+    input: &str,
+    output: &str,
+) -> UpscaleResult<String> {
+    validate_wgsl_identifier(input)?;
+    validate_wgsl_identifier(output)?;
+    let [workgroup_x, workgroup_y] = pass.dispatch.block_size;
+    if workgroup_x == 0 || workgroup_y == 0 {
+        return Err(invalid_pipeline(format!(
+            "invalid WGSL workgroup size for pass {}",
+            pass.pass_index
+        )));
+    }
+    Ok(format!(
+        "{declarations}\n\n@compute @workgroup_size({workgroup_x}, {workgroup_y}, 1)\nfn main(@builtin(global_invocation_id) gid: vec3<u32>) {{\n    let pos = vec2<u32>(gid.xy);\n    let value = textureLoad({input}, vec2<i32>(pos), 0);\n    textureStore({output}, vec2<i32>(pos), value);\n}}\n",
+        declarations = declarations.source
+    ))
 }
 
 fn wgpu_texture_format(format: &MagpieTextureFormat) -> UpscaleResult<wgpu::TextureFormat> {
@@ -1281,6 +1405,74 @@ void Pass1(uint2 pos) { OUTPUT[pos] = INPUT[pos]; }
 
         assert!(matches!(
             MagpieWgpuDeclarationPlan::from_resource_plan(&resources),
+            Err(UpscaleError::InvalidPipeline(_))
+        ));
+    }
+
+    #[test]
+    fn translates_simple_compute_copy_pass_to_wgsl() {
+        let package = package(
+            r"
+//!MAGPIE EFFECT
+//!VERSION 4
+//!TEXTURE
+Texture2D INPUT;
+//!TEXTURE
+Texture2D OUTPUT;
+//!PASS 1
+//!IN INPUT
+//!OUT OUTPUT
+//!BLOCK_SIZE 8
+//!NUM_THREADS 64
+void Pass1(uint2 pos) { OUTPUT[pos] = INPUT[pos]; }
+",
+        );
+        let resources = MagpieResourcePlan::from_package(&package).unwrap();
+
+        let plan =
+            MagpieWgpuBodyTranslationPlan::from_package_and_resource_plan(&package, &resources)
+                .unwrap();
+        let pass = plan.pass(1).unwrap();
+
+        assert_eq!(pass.entry_point, "main");
+        assert!(
+            pass.wgsl_source
+                .contains("@compute @workgroup_size(8, 8, 1)")
+        );
+        assert!(pass.wgsl_source.contains("textureLoad(INPUT"));
+        assert!(pass.wgsl_source.contains("textureStore(OUTPUT"));
+        assert!(
+            pass.wgsl_source
+                .contains("@group(0) @binding(32) var INPUT")
+        );
+        assert!(
+            pass.wgsl_source
+                .contains("@group(0) @binding(64) var OUTPUT")
+        );
+    }
+
+    #[test]
+    fn rejects_compute_body_that_is_not_simple_copy() {
+        let package = package(
+            r"
+//!MAGPIE EFFECT
+//!VERSION 4
+//!TEXTURE
+Texture2D INPUT;
+//!TEXTURE
+Texture2D OUTPUT;
+//!PASS 1
+//!IN INPUT
+//!OUT OUTPUT
+//!BLOCK_SIZE 8
+//!NUM_THREADS 64
+void Pass1(uint2 pos) { OUTPUT[pos] = MF4(1, 0, 0, 1); }
+",
+        );
+        let resources = MagpieResourcePlan::from_package(&package).unwrap();
+
+        assert!(matches!(
+            MagpieWgpuBodyTranslationPlan::from_package_and_resource_plan(&package, &resources),
             Err(UpscaleError::InvalidPipeline(_))
         ));
     }

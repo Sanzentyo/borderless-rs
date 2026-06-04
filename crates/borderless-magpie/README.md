@@ -60,6 +60,8 @@ Current ported pieces include:
   against the explicit layout objects.
 - `MagpieWgpuDeclarationPlan` behind `wgpu-compare`, which emits WGSL resource declarations from
   the Magpie resource plan using the same binding bases as the wgpu layout and bind group objects.
+- `MagpieWgpuBodyTranslationPlan` behind `wgpu-compare`, which starts the HLSL-to-WGSL body
+  translation path with simple compute-style texture copy passes.
 
 Bundled shader/effect assets are intentionally feature-gated and must carry per-file SPDX headers
 from their original source. Some Magpie effect files have their own notices, so they should not be

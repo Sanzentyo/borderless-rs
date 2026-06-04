@@ -3,6 +3,7 @@
 #![forbid(unsafe_code)]
 
 pub mod compiler;
+pub mod constants;
 pub mod dds;
 pub mod dispatch;
 pub mod effect;
@@ -15,6 +16,10 @@ pub mod profile;
 pub use compiler::{
     MAGPIE_ENTRY_POINT, MAGPIE_TARGET_PROFILE, MagpieCompilePlan, MagpieShaderJob,
     MagpieShaderMacro,
+};
+pub use constants::{
+    MagpieConstantBufferOptions, MagpieConstantBufferPlan, MagpieConstantEntry,
+    MagpieConstantValue, MagpieDynamicConstantBuffer, MagpieParameterValue,
 };
 pub use dds::{DdsMetadata, parse_dds_metadata, read_dds_metadata};
 pub use dispatch::{MagpieDispatchPass, MagpieDispatchPlan};

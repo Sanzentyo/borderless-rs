@@ -129,6 +129,7 @@ flowchart LR
     Package --> Jobs["MagpieCompilePlan\n__M / cs_5_0 / per-pass macros"]
     Jobs --> Compiler["MagpieExternalHlslCompiler\nfxc/dxc bytecode handoff"]
     Resources --> Dispatch["MagpieDispatchPlan\nDispatch(x,y,1) groups"]
+    Resources --> Constants["MagpieConstantBufferPlan\nCB1 dword payload"]
 ```
 
 The parser currently recognizes these directive groups:
@@ -203,6 +204,11 @@ target remains `cs_5_0`, so `fxc` is the expected compiler for parity with Magpi
 uses the first output texture size and the normalized block size, then computes
 `Dispatch(ceil(width / block_width), ceil(height / block_height), 1)`. PS-style passes normalize to
 Magpie's 16x16 block.
+
+`MagpieConstantBufferPlan` mirrors Magpie's `EffectDrawer::_UpdateConstants` CB1 layout. It packs
+input/output sizes, texel sizes, scale, non-final PS-style pass output size/texel constants, and
+non-inline parameter values into padded 32-bit dwords. `MagpieDynamicConstantBuffer` represents the
+optional `_DYNAMIC` frame-count CB2 payload.
 
 The remaining DirectX work is to add any remaining optional helper paths and wire the compiled
 bytecode into the actual D3D renderer/backend.

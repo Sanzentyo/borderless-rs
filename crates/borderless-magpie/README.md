@@ -29,6 +29,8 @@ Current ported pieces include:
   bytecode plus diagnostics without adding unsafe Rust.
 - `MagpieDispatchPlan`, which mirrors Magpie's `Dispatch(ceil(width / block_width), ceil(height /
   block_height), 1)` scheduling from the first output texture of each pass.
+- `MagpieConstantBufferPlan`, which mirrors Magpie's CB1 dword layout for builtin constants,
+  non-final PS-style pass size constants, and non-inline effect parameters.
 
 Bundled shader/effect assets are intentionally feature-gated and must carry per-file SPDX headers
 from their original source. Some Magpie effect files have their own notices, so they should not be

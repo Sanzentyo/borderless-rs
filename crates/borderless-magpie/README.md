@@ -13,6 +13,11 @@ entries for both Magpie and Borderless Oxide contributors. Local scaffolding in 
 GPL because it links into the Magpie-compatible boundary, even when that individual file is not a
 direct Magpie source port.
 
+When porting a specific Magpie source file, check that file's own notice first. Use
+`GPL-3.0-or-later` only for material that grants GPL version 3 or any later version. Shader assets and
+small utility ports can have different licenses, so they must keep their own SPDX expression and
+source attribution even when this crate's distribution boundary is GPL.
+
 Current ported pieces include:
 
 - MagpieFX directive parsing;
@@ -62,6 +67,8 @@ Current ported pieces include:
   the Magpie resource plan using the same binding bases as the wgpu layout and bind group objects.
 - `MagpieWgpuBodyTranslationPlan` behind `wgpu-compare`, which starts the HLSL-to-WGSL body
   translation path with simple compute-style texture copy passes.
+- `MagpieWgpuExecutionPlan` behind `wgpu-compare`, which converts Magpie dispatch groups into
+  ordered wgpu compute pass recording against pass-local pipelines and bind groups.
 
 Bundled shader/effect assets are intentionally feature-gated and must carry per-file SPDX headers
 from their original source. Some Magpie effect files have their own notices, so they should not be

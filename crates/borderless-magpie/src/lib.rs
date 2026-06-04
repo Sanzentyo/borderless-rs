@@ -68,6 +68,7 @@ pub use wgpu_bridge::{
     MagpieWgpuBinding, MagpieWgpuBindingKind, MagpieWgpuBindingLayoutPlan,
     MagpieWgpuBodyTranslationPlan, MagpieWgpuBufferObject, MagpieWgpuDeclaration,
     MagpieWgpuDeclarationPass, MagpieWgpuDeclarationPlan, MagpieWgpuDescriptorPlan,
+    MagpieWgpuExecutablePass, MagpieWgpuExecutionPass, MagpieWgpuExecutionPlan,
     MagpieWgpuPassBindGroup, MagpieWgpuPassLayout, MagpieWgpuPassLayoutObjects,
     MagpieWgpuPipelineObjects, MagpieWgpuResourceObjects, MagpieWgpuSamplerObject,
     MagpieWgpuShaderPass, MagpieWgpuShaderPlan, MagpieWgpuTextureObject,

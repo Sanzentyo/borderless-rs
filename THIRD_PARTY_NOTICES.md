@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: MIT OR Apache-2.0 -->
+
 # Third Party Notices
 
 The default source distribution is primarily licensed under `MIT OR Apache-2.0`.
@@ -15,9 +17,11 @@ MIT/Apache-2.0-compatible terms. Notable dependency families include:
 
 - `windows`, `windows-*`, and `windows-reactor`: MIT OR Apache-2.0, sourced from `microsoft/windows-rs`.
 - `wgpu`: MIT OR Apache-2.0; it is used only by GPL `borderless-upscale-wgpu` in this repository.
-- Magpie-compatible scaler code: GPL-3.0-or-later, isolated in `borderless-magpie` and
-  `borderless-upscale-wgpu`. Source files that directly follow Magpie behavior carry Magpie
-  attribution in their SPDX headers.
+- Magpie-compatible scaler code: isolated in `borderless-magpie` and `borderless-upscale-wgpu`.
+  Rust source files that directly follow GPLv3-or-later Magpie behavior are GPL-3.0-or-later and
+  carry Magpie attribution in their SPDX headers. If a future port follows a Magpie file with a
+  narrower or more permissive license, keep the source-file license expression and document any
+  crate-level GPL distribution boundary explicitly.
 - `tokio`, `ractor`, `tracing`, `serde`, `clap`, `regex`, and related transitive crates: permissive Rust ecosystem licenses.
 - `directories` may pull `option-ext`, which is MPL-2.0.
 

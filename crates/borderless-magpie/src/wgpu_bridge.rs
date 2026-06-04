@@ -302,6 +302,110 @@ pub struct MagpieWgpuPipelineObjects {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MagpieWgpuExecutionPlan {
+    pub passes: Vec<MagpieWgpuExecutionPass>,
+}
+
+impl MagpieWgpuExecutionPlan {
+    #[must_use]
+    pub fn from_resource_plan(resources: &MagpieResourcePlan) -> Self {
+        let passes = resources
+            .passes
+            .iter()
+            .map(MagpieWgpuExecutionPass::from_resource_pass)
+            .collect();
+
+        Self { passes }
+    }
+
+    #[must_use]
+    pub fn pass(&self, pass_index: u32) -> Option<&MagpieWgpuExecutionPass> {
+        self.passes
+            .iter()
+            .find(|pass| pass.pass_index == pass_index)
+    }
+
+    pub fn executable_passes<'a>(
+        &'a self,
+        pipelines: &'a [MagpieWgpuPipelineObjects],
+        bind_groups: &'a [MagpieWgpuPassBindGroup],
+    ) -> UpscaleResult<Vec<MagpieWgpuExecutablePass<'a>>> {
+        self.passes
+            .iter()
+            .map(|pass| pass.executable_pass(pipelines, bind_groups))
+            .collect()
+    }
+
+    pub fn record_compute_pass(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        pipelines: &[MagpieWgpuPipelineObjects],
+        bind_groups: &[MagpieWgpuPassBindGroup],
+    ) -> UpscaleResult<()> {
+        let passes = self.executable_passes(pipelines, bind_groups)?;
+        let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+            label: Some("Magpie wgpu execution"),
+            timestamp_writes: None,
+        });
+
+        for pass in &passes {
+            compute_pass.set_pipeline(pass.pipeline);
+            compute_pass.set_bind_group(0, pass.bind_group, &[]);
+            compute_pass.dispatch_workgroups(
+                pass.group_count[0],
+                pass.group_count[1],
+                pass.group_count[2],
+            );
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MagpieWgpuExecutionPass {
+    pub pass_index: u32,
+    pub pass_name: String,
+    pub group_count: [u32; 3],
+}
+
+impl MagpieWgpuExecutionPass {
+    fn from_resource_pass(pass: &MagpieResourcePass) -> Self {
+        Self {
+            pass_index: pass.pass_index,
+            pass_name: pass.pass_name.clone(),
+            group_count: pass.dispatch.group_count,
+        }
+    }
+
+    fn executable_pass<'a>(
+        &'a self,
+        pipelines: &'a [MagpieWgpuPipelineObjects],
+        bind_groups: &'a [MagpieWgpuPassBindGroup],
+    ) -> UpscaleResult<MagpieWgpuExecutablePass<'a>> {
+        let pipeline = pipeline_by_pass(pipelines, self.pass_index, &self.pass_name)?;
+        let bind_group = bind_group_by_pass(bind_groups, self.pass_index, &self.pass_name)?;
+
+        Ok(MagpieWgpuExecutablePass {
+            pass_index: self.pass_index,
+            pass_name: self.pass_name.clone(),
+            group_count: self.group_count,
+            pipeline: &pipeline.compute_pipeline,
+            bind_group: &bind_group.bind_group,
+        })
+    }
+}
+
+#[derive(Debug)]
+pub struct MagpieWgpuExecutablePass<'a> {
+    pub pass_index: u32,
+    pub pass_name: String,
+    pub group_count: [u32; 3],
+    pub pipeline: &'a wgpu::ComputePipeline,
+    pub bind_group: &'a wgpu::BindGroup,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MagpieWgpuDeclarationPlan {
     pub passes: Vec<MagpieWgpuDeclarationPass>,
 }
@@ -639,6 +743,48 @@ fn layout_object_by_pass<'a>(
         )));
     }
     Ok(layout)
+}
+
+fn pipeline_by_pass<'a>(
+    pipelines: &'a [MagpieWgpuPipelineObjects],
+    pass_index: u32,
+    pass_name: &str,
+) -> UpscaleResult<&'a MagpieWgpuPipelineObjects> {
+    let pipeline = pipelines
+        .iter()
+        .find(|pipeline| pipeline.pass_index == pass_index)
+        .ok_or_else(|| {
+            invalid_pipeline(format!(
+                "missing wgpu compute pipeline for pass {pass_index}"
+            ))
+        })?;
+    if pipeline.pass_name != pass_name {
+        return Err(invalid_pipeline(format!(
+            "wgpu compute pipeline pass {pass_index} name {} does not match execution pass {pass_name}",
+            pipeline.pass_name
+        )));
+    }
+    Ok(pipeline)
+}
+
+fn bind_group_by_pass<'a>(
+    bind_groups: &'a [MagpieWgpuPassBindGroup],
+    pass_index: u32,
+    pass_name: &str,
+) -> UpscaleResult<&'a MagpieWgpuPassBindGroup> {
+    let bind_group = bind_groups
+        .iter()
+        .find(|bind_group| bind_group.pass_index == pass_index)
+        .ok_or_else(|| {
+            invalid_pipeline(format!("missing wgpu bind group for pass {pass_index}"))
+        })?;
+    if bind_group.pass_name != pass_name {
+        return Err(invalid_pipeline(format!(
+            "wgpu bind group pass {pass_index} name {} does not match execution pass {pass_name}",
+            bind_group.pass_name
+        )));
+    }
+    Ok(bind_group)
 }
 
 fn wgsl_declaration_pass(
@@ -1475,6 +1621,47 @@ void Pass1(uint2 pos) { OUTPUT[pos] = MF4(1, 0, 0, 1); }
             MagpieWgpuBodyTranslationPlan::from_package_and_resource_plan(&package, &resources),
             Err(UpscaleError::InvalidPipeline(_))
         ));
+    }
+
+    #[test]
+    fn builds_execution_plan_from_resource_dispatches() {
+        let package = package(
+            r"
+//!MAGPIE EFFECT
+//!VERSION 4
+//!TEXTURE
+Texture2D INPUT;
+//!TEXTURE
+//!WIDTH INPUT_WIDTH
+//!HEIGHT INPUT_HEIGHT
+Texture2D tex1;
+//!TEXTURE
+Texture2D OUTPUT;
+//!SAMPLER
+SamplerState LINEAR;
+//!PASS 1
+//!STYLE PS
+//!IN INPUT
+//!OUT tex1
+//!DESC Prep
+MF4 Pass1(float2 pos) { return INPUT.Sample(LINEAR, pos); }
+//!PASS 2
+//!IN tex1
+//!OUT OUTPUT
+//!BLOCK_SIZE 8
+//!NUM_THREADS 64
+void Pass2(uint2 pos) { OUTPUT[pos] = tex1[pos]; }
+",
+        );
+        let resources = MagpieResourcePlan::from_package(&package).unwrap();
+
+        let execution = MagpieWgpuExecutionPlan::from_resource_plan(&resources);
+
+        assert_eq!(execution.passes.len(), 2);
+        assert_eq!(execution.pass(1).unwrap().pass_name, "Prep");
+        assert_eq!(execution.pass(1).unwrap().group_count, [20, 15, 1]);
+        assert_eq!(execution.pass(2).unwrap().pass_name, "Pass 2");
+        assert_eq!(execution.pass(2).unwrap().group_count, [80, 60, 1]);
     }
 
     fn texture_descriptor() -> MagpieBackendTextureDescriptor {

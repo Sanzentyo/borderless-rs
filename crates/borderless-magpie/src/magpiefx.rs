@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-FileCopyrightText: Copyright (c) Xu and Magpie contributors
+// SPDX-FileCopyrightText: Copyright (c) Borderless Oxide contributors
 // Magpie-compatible effect parsing based on the GPL-licensed Magpie project:
 // https://github.com/Blinue/Magpie
 

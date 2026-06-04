@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-FileCopyrightText: Copyright (c) Xu and Magpie contributors
+// SPDX-FileCopyrightText: Copyright (c) Borderless Oxide contributors
 // DDS source texture metadata support for the Magpie-compatible GPL port:
 // https://github.com/Blinue/Magpie
 

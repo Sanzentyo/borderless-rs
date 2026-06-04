@@ -6,7 +6,12 @@
 
 This crate is licensed under GPL-3.0-or-later. Code in this crate that directly follows Magpie
 behavior, file formats, render planning, shader semantics, or effect asset behavior inherits that GPL
-boundary.
+boundary and carries Magpie attribution in the relevant source headers.
+
+Rust files that directly port or closely follow Magpie behavior include `SPDX-FileCopyrightText`
+entries for both Magpie and Borderless Oxide contributors. Local scaffolding in this crate remains
+GPL because it links into the Magpie-compatible boundary, even when that individual file is not a
+direct Magpie source port.
 
 Current ported pieces include:
 
@@ -19,6 +24,10 @@ Current ported pieces include:
 - `MagpieCompilePlan`, which prepares Magpie-compatible per-pass shader compile jobs using the
   `__M` entry point, `cs_5_0` target profile, Magpie macro set, and generated per-pass wrapper
   source.
+
+Bundled shader/effect assets are intentionally feature-gated and must carry per-file SPDX headers
+from their original source. Some Magpie effect files have their own notices, so they should not be
+blanket-relicensed from the Rust crate metadata.
 
 Reference project:
 

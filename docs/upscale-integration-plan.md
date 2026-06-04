@@ -259,6 +259,8 @@ before native DirectX or wgpu-specific object creation.
 Behind `wgpu-compare`, `MagpieWgpuDescriptorPlan` converts those backend descriptors into
 `wgpu::TextureDescriptor`, `wgpu::BufferDescriptor`, and `wgpu::SamplerDescriptor` values. The
 mapping remains explicit: unsupported raw DXGI formats are rejected until a wgpu equivalent is added.
+`MagpieWgpuResourceObjects` creates the corresponding wgpu textures, texture views, constant
+buffers, and samplers, then uses the pass binding layout to assemble `wgpu::BindGroup` objects.
 `MagpieWgpuBindingLayoutPlan` then converts each pass's CBV/SRV/UAV/sampler handoff into
 `wgpu::BindGroupLayoutEntry` values. Because Magpie's HLSL resources use separate `b`, `t`, `u`, and
 `s` register spaces while wgpu uses one binding namespace per group, the bridge reserves disjoint

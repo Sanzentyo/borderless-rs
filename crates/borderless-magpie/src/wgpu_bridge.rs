@@ -56,6 +56,148 @@ impl<'a> MagpieWgpuDescriptorPlan<'a> {
     }
 }
 
+#[derive(Debug)]
+pub struct MagpieWgpuResourceObjects {
+    pub textures: Vec<MagpieWgpuTextureObject>,
+    pub buffers: Vec<MagpieWgpuBufferObject>,
+    pub samplers: Vec<MagpieWgpuSamplerObject>,
+}
+
+impl MagpieWgpuResourceObjects {
+    pub fn from_backend_descriptors(
+        device: &wgpu::Device,
+        descriptors: &MagpieBackendDescriptorPlan,
+    ) -> UpscaleResult<Self> {
+        let textures = descriptors
+            .textures
+            .iter()
+            .map(|texture| create_texture_object(device, texture))
+            .collect::<UpscaleResult<Vec<_>>>()?;
+        let buffers = descriptors
+            .buffers
+            .iter()
+            .map(|buffer| create_buffer_object(device, buffer))
+            .collect::<UpscaleResult<Vec<_>>>()?;
+        let samplers = descriptors
+            .samplers
+            .iter()
+            .map(|sampler| create_sampler_object(device, sampler))
+            .collect::<Vec<_>>();
+
+        Ok(Self {
+            textures,
+            buffers,
+            samplers,
+        })
+    }
+
+    pub fn create_pass_bind_group(
+        &self,
+        device: &wgpu::Device,
+        layout: &MagpieWgpuPassLayout,
+        bind_group_layout: &wgpu::BindGroupLayout,
+    ) -> UpscaleResult<MagpieWgpuPassBindGroup> {
+        let entries = layout
+            .bindings
+            .iter()
+            .map(|binding| self.bind_group_entry(binding))
+            .collect::<UpscaleResult<Vec<_>>>()?;
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some(layout.pass_name.as_str()),
+            layout: bind_group_layout,
+            entries: &entries,
+        });
+
+        Ok(MagpieWgpuPassBindGroup {
+            pass_index: layout.pass_index,
+            pass_name: layout.pass_name.clone(),
+            bind_group,
+        })
+    }
+
+    #[must_use]
+    pub fn texture(&self, name: &str) -> Option<&MagpieWgpuTextureObject> {
+        self.textures.iter().find(|texture| texture.name == name)
+    }
+
+    #[must_use]
+    pub fn buffer(&self, name: &str) -> Option<&MagpieWgpuBufferObject> {
+        self.buffers.iter().find(|buffer| buffer.name == name)
+    }
+
+    #[must_use]
+    pub fn sampler(&self, name: &str) -> Option<&MagpieWgpuSamplerObject> {
+        self.samplers.iter().find(|sampler| sampler.name == name)
+    }
+
+    fn bind_group_entry<'a>(
+        &'a self,
+        binding: &MagpieWgpuBinding,
+    ) -> UpscaleResult<wgpu::BindGroupEntry<'a>> {
+        Ok(wgpu::BindGroupEntry {
+            binding: binding.binding,
+            resource: self.binding_resource(binding)?,
+        })
+    }
+
+    fn binding_resource<'a>(
+        &'a self,
+        binding: &MagpieWgpuBinding,
+    ) -> UpscaleResult<wgpu::BindingResource<'a>> {
+        match binding.kind {
+            MagpieWgpuBindingKind::ConstantBuffer => {
+                let buffer = self.buffer(&binding.name).ok_or_else(|| {
+                    invalid_pipeline(format!("missing wgpu buffer {}", binding.name))
+                })?;
+                Ok(wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                    buffer: &buffer.buffer,
+                    offset: 0,
+                    size: wgpu::BufferSize::new(buffer.byte_len as u64),
+                }))
+            }
+            MagpieWgpuBindingKind::ShaderResource | MagpieWgpuBindingKind::UnorderedAccess => {
+                let texture = self.texture(&binding.name).ok_or_else(|| {
+                    invalid_pipeline(format!("missing wgpu texture {}", binding.name))
+                })?;
+                Ok(wgpu::BindingResource::TextureView(&texture.view))
+            }
+            MagpieWgpuBindingKind::Sampler => {
+                let sampler = self.sampler(&binding.name).ok_or_else(|| {
+                    invalid_pipeline(format!("missing wgpu sampler {}", binding.name))
+                })?;
+                Ok(wgpu::BindingResource::Sampler(&sampler.sampler))
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct MagpieWgpuTextureObject {
+    pub name: String,
+    pub texture: wgpu::Texture,
+    pub view: wgpu::TextureView,
+}
+
+#[derive(Debug)]
+pub struct MagpieWgpuBufferObject {
+    pub name: String,
+    pub byte_len: usize,
+    pub buffer: wgpu::Buffer,
+}
+
+#[derive(Debug)]
+pub struct MagpieWgpuSamplerObject {
+    pub name: String,
+    pub sampler: wgpu::Sampler,
+}
+
+#[derive(Clone, Debug)]
+pub struct MagpieWgpuPassBindGroup {
+    pub pass_index: u32,
+    pub pass_name: String,
+    pub bind_group: wgpu::BindGroup,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MagpieWgpuBindingLayoutPlan {
     pub passes: Vec<MagpieWgpuPassLayout>,
@@ -207,6 +349,66 @@ pub fn wgpu_sampler_descriptor(
         anisotropy_clamp: 1,
         border_color: None,
     }
+}
+
+fn create_texture_object(
+    device: &wgpu::Device,
+    descriptor: &MagpieBackendTextureDescriptor,
+) -> UpscaleResult<MagpieWgpuTextureObject> {
+    let texture = device.create_texture(&wgpu_texture_descriptor(descriptor)?);
+    let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+    Ok(MagpieWgpuTextureObject {
+        name: descriptor.name.clone(),
+        texture,
+        view,
+    })
+}
+
+fn create_buffer_object(
+    device: &wgpu::Device,
+    descriptor: &MagpieBackendBufferDescriptor,
+) -> UpscaleResult<MagpieWgpuBufferObject> {
+    if descriptor.byte_len == 0 {
+        return Err(invalid_pipeline(format!(
+            "Magpie buffer {} has zero byte length",
+            descriptor.name
+        )));
+    }
+    let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        mapped_at_creation: true,
+        ..wgpu_buffer_descriptor(descriptor)
+    });
+    write_initial_dwords(&buffer, descriptor.byte_len, &descriptor.initial_dwords);
+    buffer.unmap();
+
+    Ok(MagpieWgpuBufferObject {
+        name: descriptor.name.clone(),
+        byte_len: descriptor.byte_len,
+        buffer,
+    })
+}
+
+fn create_sampler_object(
+    device: &wgpu::Device,
+    descriptor: &MagpieBackendSamplerDescriptor,
+) -> MagpieWgpuSamplerObject {
+    MagpieWgpuSamplerObject {
+        name: descriptor.name.clone(),
+        sampler: device.create_sampler(&wgpu_sampler_descriptor(descriptor)),
+    }
+}
+
+fn write_initial_dwords(buffer: &wgpu::Buffer, byte_len: usize, dwords: &[u32]) {
+    let mut view = buffer.slice(..).get_mapped_range_mut();
+    let byte_count = byte_len.min(view.len());
+    let mut bytes = vec![0_u8; byte_count];
+    bytes
+        .chunks_exact_mut(std::mem::size_of::<u32>())
+        .zip(dwords.iter())
+        .for_each(|(chunk, dword)| chunk.copy_from_slice(&dword.to_ne_bytes()));
+    view.slice(..byte_count).copy_from_slice(&bytes);
+    drop(view);
 }
 
 fn wgpu_texture_format(format: &MagpieTextureFormat) -> UpscaleResult<wgpu::TextureFormat> {

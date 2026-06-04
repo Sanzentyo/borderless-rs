@@ -4,6 +4,7 @@
 
 pub mod compiler;
 pub mod dds;
+pub mod dispatch;
 pub mod effect;
 pub mod hlsl_compiler;
 pub mod magpiefx;
@@ -16,6 +17,7 @@ pub use compiler::{
     MagpieShaderMacro,
 };
 pub use dds::{DdsMetadata, parse_dds_metadata, read_dds_metadata};
+pub use dispatch::{MagpieDispatchPass, MagpieDispatchPlan};
 pub use effect::{EffectGraph, EffectPass, EffectPassStyle, EffectSource, MagpieEffect};
 pub use hlsl_compiler::{
     MagpieCompiledShader, MagpieExternalHlslCompiler, MagpieHlslCompilerInvocation,

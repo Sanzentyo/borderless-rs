@@ -128,6 +128,7 @@ flowchart LR
     Resources --> Package
     Package --> Jobs["MagpieCompilePlan\n__M / cs_5_0 / per-pass macros"]
     Jobs --> Compiler["MagpieExternalHlslCompiler\nfxc/dxc bytecode handoff"]
+    Resources --> Dispatch["MagpieDispatchPlan\nDispatch(x,y,1) groups"]
 ```
 
 The parser currently recognizes these directive groups:
@@ -197,6 +198,11 @@ enabled.
 per-pass generated HLSL source file to a temporary path, invokes `fxc` or `dxc`, reads the resulting
 `.cso`, captures diagnostics, and removes the temporary files on drop. The Magpie-compatible default
 target remains `cs_5_0`, so `fxc` is the expected compiler for parity with Magpie's Direct3D 11 path.
+
+`MagpieDispatchPlan` mirrors Magpie's `EffectDrawer::_UpdatePassResources` dispatch math. Each pass
+uses the first output texture size and the normalized block size, then computes
+`Dispatch(ceil(width / block_width), ceil(height / block_height), 1)`. PS-style passes normalize to
+Magpie's 16x16 block.
 
 The remaining DirectX work is to add any remaining optional helper paths and wire the compiled
 bytecode into the actual D3D renderer/backend.

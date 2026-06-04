@@ -27,6 +27,8 @@ Current ported pieces include:
   built-in helpers, and per-pass wrapper source.
 - `MagpieExternalHlslCompiler`, which can hand generated HLSL to `fxc` or `dxc` and return compiled
   bytecode plus diagnostics without adding unsafe Rust.
+- `MagpieDispatchPlan`, which mirrors Magpie's `Dispatch(ceil(width / block_width), ceil(height /
+  block_height), 1)` scheduling from the first output texture of each pass.
 
 Bundled shader/effect assets are intentionally feature-gated and must carry per-file SPDX headers
 from their original source. Some Magpie effect files have their own notices, so they should not be

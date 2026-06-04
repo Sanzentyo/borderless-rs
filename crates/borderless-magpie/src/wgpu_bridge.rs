@@ -301,6 +301,47 @@ pub struct MagpieWgpuPipelineObjects {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MagpieWgpuDeclarationPlan {
+    pub passes: Vec<MagpieWgpuDeclarationPass>,
+}
+
+impl MagpieWgpuDeclarationPlan {
+    pub fn from_resource_plan(resources: &MagpieResourcePlan) -> UpscaleResult<Self> {
+        let layouts = MagpieWgpuBindingLayoutPlan::from_resource_plan(resources)?;
+        let passes = resources
+            .passes
+            .iter()
+            .map(|pass| wgsl_declaration_pass(resources, pass, &layouts))
+            .collect::<UpscaleResult<Vec<_>>>()?;
+
+        Ok(Self { passes })
+    }
+
+    #[must_use]
+    pub fn pass(&self, pass_index: u32) -> Option<&MagpieWgpuDeclarationPass> {
+        self.passes
+            .iter()
+            .find(|pass| pass.pass_index == pass_index)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MagpieWgpuDeclarationPass {
+    pub pass_index: u32,
+    pub pass_name: String,
+    pub declarations: Vec<MagpieWgpuDeclaration>,
+    pub source: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MagpieWgpuDeclaration {
+    pub name: String,
+    pub binding: u32,
+    pub kind: MagpieWgpuBindingKind,
+    pub source: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MagpieWgpuBindingLayoutPlan {
     pub passes: Vec<MagpieWgpuPassLayout>,
 }
@@ -562,6 +603,154 @@ fn layout_object_by_pass<'a>(
         )));
     }
     Ok(layout)
+}
+
+fn wgsl_declaration_pass(
+    resources: &MagpieResourcePlan,
+    pass: &MagpieResourcePass,
+    layouts: &MagpieWgpuBindingLayoutPlan,
+) -> UpscaleResult<MagpieWgpuDeclarationPass> {
+    let layout = layouts.pass(pass.pass_index).ok_or_else(|| {
+        invalid_pipeline(format!(
+            "missing wgpu declaration layout for pass {}",
+            pass.pass_index
+        ))
+    })?;
+    let declarations = layout
+        .bindings
+        .iter()
+        .map(|binding| wgsl_declaration(resources, pass, binding))
+        .collect::<UpscaleResult<Vec<_>>>()?;
+    let source = declarations
+        .iter()
+        .map(|declaration| declaration.source.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    Ok(MagpieWgpuDeclarationPass {
+        pass_index: pass.pass_index,
+        pass_name: pass.pass_name.clone(),
+        declarations,
+        source,
+    })
+}
+
+fn wgsl_declaration(
+    resources: &MagpieResourcePlan,
+    pass: &MagpieResourcePass,
+    binding: &MagpieWgpuBinding,
+) -> UpscaleResult<MagpieWgpuDeclaration> {
+    let source = match binding.kind {
+        MagpieWgpuBindingKind::ConstantBuffer => {
+            let buffer = constant_buffer_by_name(resources, &binding.name)?;
+            wgsl_constant_buffer_declaration(binding, buffer)?
+        }
+        MagpieWgpuBindingKind::ShaderResource => {
+            let texture = shader_resource_by_name(pass, &binding.name)?;
+            wgsl_shader_resource_declaration(binding, texture)?
+        }
+        MagpieWgpuBindingKind::UnorderedAccess => {
+            let texture = unordered_access_by_name(pass, &binding.name)?;
+            wgsl_unordered_access_declaration(binding, texture)?
+        }
+        MagpieWgpuBindingKind::Sampler => wgsl_sampler_declaration(binding)?,
+    };
+
+    Ok(MagpieWgpuDeclaration {
+        name: binding.name.clone(),
+        binding: binding.binding,
+        kind: binding.kind,
+        source,
+    })
+}
+
+fn wgsl_constant_buffer_declaration(
+    binding: &MagpieWgpuBinding,
+    buffer: &MagpieConstantBufferBinding,
+) -> UpscaleResult<String> {
+    validate_wgsl_identifier(&binding.name)?;
+    let dword_count = buffer.byte_len.div_ceil(std::mem::size_of::<u32>());
+    let type_name = format!("{}Data", binding.name);
+    validate_wgsl_identifier(&type_name)?;
+    Ok(format!(
+        "struct {type_name} {{ data: array<u32, {dword_count}> }};\n@group(0) @binding({}) var<uniform> {}: {type_name};",
+        binding.binding, binding.name
+    ))
+}
+
+fn wgsl_shader_resource_declaration(
+    binding: &MagpieWgpuBinding,
+    texture: &MagpieTextureResourceBinding,
+) -> UpscaleResult<String> {
+    validate_wgsl_identifier(&binding.name)?;
+    Ok(format!(
+        "@group(0) @binding({}) var {}: texture_2d<{}>;",
+        binding.binding,
+        binding.name,
+        wgsl_texture_sample_type(&texture.format)
+    ))
+}
+
+fn wgsl_unordered_access_declaration(
+    binding: &MagpieWgpuBinding,
+    texture: &MagpieTextureResourceBinding,
+) -> UpscaleResult<String> {
+    validate_wgsl_identifier(&binding.name)?;
+    Ok(format!(
+        "@group(0) @binding({}) var {}: texture_storage_2d<{}, write>;",
+        binding.binding,
+        binding.name,
+        wgsl_storage_texture_format(&texture.format)?
+    ))
+}
+
+fn wgsl_sampler_declaration(binding: &MagpieWgpuBinding) -> UpscaleResult<String> {
+    validate_wgsl_identifier(&binding.name)?;
+    Ok(format!(
+        "@group(0) @binding({}) var {}: sampler;",
+        binding.binding, binding.name
+    ))
+}
+
+fn wgsl_texture_sample_type(format: &MagpieTextureFormat) -> &'static str {
+    match format.descriptor().component {
+        MagpieTextureComponent::Float
+        | MagpieTextureComponent::Unorm
+        | MagpieTextureComponent::Snorm
+        | MagpieTextureComponent::Unknown => "f32",
+    }
+}
+
+fn wgsl_storage_texture_format(format: &MagpieTextureFormat) -> UpscaleResult<&'static str> {
+    match format {
+        MagpieTextureFormat::R8Unorm => Ok("r8unorm"),
+        MagpieTextureFormat::R8g8b8a8Unorm | MagpieTextureFormat::R8g8b8a8UnormSrgb => {
+            Ok("rgba8unorm")
+        }
+        MagpieTextureFormat::R8g8b8a8Snorm => Ok("rgba8snorm"),
+        MagpieTextureFormat::R16g16b16a16Float => Ok("rgba16float"),
+        MagpieTextureFormat::R32Float => Ok("r32float"),
+        MagpieTextureFormat::R32g32b32a32Float => Ok("rgba32float"),
+        MagpieTextureFormat::R8g8Unorm
+        | MagpieTextureFormat::R16Float
+        | MagpieTextureFormat::R16g16Float
+        | MagpieTextureFormat::Dxgi(_)
+        | MagpieTextureFormat::Unknown(_) => Err(invalid_pipeline(format!(
+            "Magpie texture format {format:?} has no WGSL storage texture declaration"
+        ))),
+    }
+}
+
+fn validate_wgsl_identifier(identifier: &str) -> UpscaleResult<()> {
+    let mut chars = identifier.chars();
+    let Some(first) = chars.next() else {
+        return Err(invalid_pipeline("WGSL identifier cannot be empty"));
+    };
+    let valid_first = first == '_' || first.is_ascii_alphabetic();
+    let valid_rest = chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric());
+    (valid_first && valid_rest)
+        .then_some(())
+        .ok_or_else(|| invalid_pipeline(format!("invalid WGSL identifier {identifier}")))
 }
 
 fn wgpu_texture_format(format: &MagpieTextureFormat) -> UpscaleResult<wgpu::TextureFormat> {
@@ -1003,6 +1192,95 @@ void Pass1(uint2 pos) { OUTPUT[pos] = INPUT[pos]; }
 
         assert!(matches!(
             MagpieWgpuShaderPlan::from_wgsl_passes(&layouts, vec![shader_pass]),
+            Err(UpscaleError::InvalidPipeline(_))
+        ));
+    }
+
+    #[test]
+    fn generates_wgsl_resource_declarations_from_pass_layout() {
+        let package = package(
+            r"
+//!MAGPIE EFFECT
+//!VERSION 4
+//!USE _DYNAMIC
+//!TEXTURE
+Texture2D INPUT;
+//!TEXTURE
+//!WIDTH INPUT_WIDTH
+//!HEIGHT INPUT_HEIGHT
+Texture2D tex1;
+//!TEXTURE
+Texture2D OUTPUT;
+//!SAMPLER
+//!FILTER LINEAR
+//!ADDRESS CLAMP
+SamplerState LINEAR;
+//!PASS 1
+//!STYLE PS
+//!IN INPUT
+//!OUT tex1
+//!DESC Copy
+MF4 Pass1(float2 pos) { return INPUT.Sample(LINEAR, pos); }
+//!PASS 2
+//!IN tex1
+//!OUT OUTPUT
+//!BLOCK_SIZE 8
+//!NUM_THREADS 64
+void Pass2(uint2 pos) { OUTPUT[pos] = tex1[pos]; }
+",
+        );
+        let resources = MagpieResourcePlan::from_package(&package).unwrap();
+
+        let declarations = MagpieWgpuDeclarationPlan::from_resource_plan(&resources).unwrap();
+        let pass = declarations.pass(1).unwrap();
+
+        assert!(pass.source.contains("struct __CB1Data { data: array<u32,"));
+        assert!(
+            pass.source
+                .contains("@group(0) @binding(0) var<uniform> __CB1: __CB1Data;")
+        );
+        assert!(
+            pass.source
+                .contains("@group(0) @binding(1) var<uniform> __CB2: __CB2Data;")
+        );
+        assert!(
+            pass.source
+                .contains("@group(0) @binding(32) var INPUT: texture_2d<f32>;")
+        );
+        assert!(
+            pass.source.contains(
+                "@group(0) @binding(64) var tex1: texture_storage_2d<rgba8unorm, write>;"
+            )
+        );
+        assert!(
+            pass.source
+                .contains("@group(0) @binding(96) var LINEAR: sampler;")
+        );
+    }
+
+    #[test]
+    fn rejects_unsupported_wgsl_storage_texture_declaration_format() {
+        let package = package(
+            r"
+//!MAGPIE EFFECT
+//!VERSION 4
+//!TEXTURE
+Texture2D INPUT;
+//!TEXTURE
+//!FORMAT R16_FLOAT
+Texture2D OUTPUT;
+//!PASS 1
+//!IN INPUT
+//!OUT OUTPUT
+//!BLOCK_SIZE 8
+//!NUM_THREADS 64
+void Pass1(uint2 pos) { OUTPUT[pos] = INPUT[pos]; }
+",
+        );
+        let resources = MagpieResourcePlan::from_package(&package).unwrap();
+
+        assert!(matches!(
+            MagpieWgpuDeclarationPlan::from_resource_plan(&resources),
             Err(UpscaleError::InvalidPipeline(_))
         ));
     }
